@@ -1,5 +1,7 @@
+// CREADO POR https://github.com/Andresv27728 
+// NO QUITAR CREDITOS 
 export default {
-  command: ['ping2', 'speed2', 'p2', 'latency2', 'sys2', 'status2'],
+  command: ['ping', 'speed', 'p', 'latency', 'sys', 'status'],
   category: 'main',
   run: async ({ msg, sock }) => {
 
@@ -86,21 +88,21 @@ export default {
     const namebot = global.db?.data?.settings?.[botId]?.namebot || 'Hory'
 
     const tableData = [
-      ['WA Roundtrip', `${waRoundtrip} ms`],
-      ['Velocidad de respuesta del bot', `${totalExec} ms`],
+      ['Ida y vuelta WA', `${waRoundtrip} ms`],
+      ['Velocidad de respuesta', `${totalExec} ms`],
       ['Estado', 'En línea'],
-      ['Hostname', os.hostname()],
+      ['Nombre del host', os.hostname()],
       ['Plataforma', `${os.platform()} ${os.arch()}`],
-      ['Node', process.version],
-      ['CPU', `${cpus[0]?.model?.slice(0, 25)}`],
+      ['Versión Node', process.version],
+      ['Procesador', `${cpus[0]?.model?.slice(0, 25)}`],
       ['Núcleos', `${cpus.length}`],
-      ['Carga CPU', `${cpuPct}%`],
-      ['RAM', `${fmtSize(totalMem - freeMem)} / ${fmtSize(totalMem)}`],
-      ['Heap', `${fmtSize(heap.heapUsed)} / ${fmtSize(heap.heapTotal)}`],
-      ['Disco', `${fmtSize(diskUsed)} / ${fmtSize(diskTotal)}`],
-      ['Red', net.iface],
-      ['Uptime Bot', fmtUp(process.uptime())],
-      ['Uptime Servidor', fmtUp(os.uptime())],
+      ['Carga del procesador', `${cpuPct}%`],
+      ['Memoria RAM', `${fmtSize(totalMem - freeMem)} / ${fmtSize(totalMem)}`],
+      ['Memoria Heap', `${fmtSize(heap.heapUsed)} / ${fmtSize(heap.heapTotal)}`],
+      ['Almacenamiento', `${fmtSize(diskUsed)} / ${fmtSize(diskTotal)}`],
+      ['Interfaz de red', net.iface],
+      ['Tiempo activo del bot', fmtUp(process.uptime())],
+      ['Tiempo activo del servidor', fmtUp(os.uptime())],
     ]
 
     await sock.sendTable(msg.chat, '⚡ Rendimiento del sistema', ['Métrica', 'Valor'], tableData, msg, {
