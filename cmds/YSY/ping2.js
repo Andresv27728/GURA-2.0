@@ -11,7 +11,6 @@ export default {
 
     const execStart = performance.now()
 
-    // ================= FORMATO BYTES =================
     const fmtSize = (b) => {
       if (!b || b === 0) return '0 B'
       const u = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -19,7 +18,6 @@ export default {
       return (b / Math.pow(1024, i)).toFixed(1) + ' ' + u[i]
     }
 
-    // ================= FORMATO UPTIME =================
     const fmtUp = (s) => {
       s = Number(s)
       const d = Math.floor(s / 86400)
@@ -31,34 +29,33 @@ export default {
       return `${m}m ${sc}s`
     }
 
-    // ================= RED =================
     const getNetwork = () => {
       try {
         const ifaces = os.networkInterfaces()
+        let active = 'N/A'
         for (const [name, addrs] of Object.entries(ifaces)) {
           if (name.toLowerCase().includes('lo')) continue
           for (const a of addrs) {
-            if (a.family === 'IPv4' && !a.internal) return name
+            if (a.family === 'IPv4' && !a.internal) {
+              active = name
+              break
+            }
           }
         }
-        return 'N/A'
-      } catch { return 'N/A' }
+        return { iface: active }
+      } catch {
+        return { iface: 'N/A' }
+      }
     }
 
-    // ================= WA ROUNDTRIP =================
     const t0 = msg?.messageTimestamp ? msg.messageTimestamp * 1000 : Date.now()
     const waRoundtrip = Math.max(1, Date.now() - t0)
 
-    // ================= CPU =================
     const cpus = os.cpus()
-    const cpuPct = Math.max(1, Math.min(100, (os.loadavg()[0] / cpus.length) * 100)).toFixed(1)
-
-    // ================= MEMORIA =================
     const totalMem = os.totalmem()
     const freeMem = os.freemem()
-    const heap = process.memoryUsage()
+    const cpuPct = Math.max(1, Math.min(100, (os.loadavg()[0] / cpus.length) * 100)).toFixed(1)
 
-    // ================= DISCO =================
     let diskTotal = 0, diskUsed = 0
     try {
       if (process.platform === 'win32') {
@@ -81,77 +78,37 @@ export default {
       }
     } catch {}
 
-    const netIface = getNetwork()
+    const heap = process.memoryUsage()
+    const net = getNetwork()
     const totalExec = Math.round(performance.now() - execStart)
-
-    // ================= BARRA DE PROGRESO =================
-    const bar = (val, max, len = 10) => {
-      const filled = Math.round((Math.min(val, max) / max) * len)
-      return '[' + '█'.repeat(filled) + '░'.repeat(len - filled) + ']'
-    }
-
-    const ramPct = ((totalMem - freeMem) / totalMem * 100).toFixed(1)
-    const diskPct = diskTotal > 0 ? (diskUsed / diskTotal * 100).toFixed(1) : 0
 
     const botId = sock.user?.id?.split(':')[0] + '@s.whatsapp.net'
     const namebot = global.db?.data?.settings?.[botId]?.namebot || 'Hory'
 
-    const response = `
-╔══════════════════════════════╗
-║   ⚡  ${namebot.toUpperCase()} SYSTEM MONITOR  ⚡   ║
-╚══════════════════════════════╝
+    const tableData = [
+      ['WA Roundtrip', `${waRoundtrip} ms`],
+      ['Velocidad de respuesta del bot', `${totalExec} ms`],
+      ['Estado', 'En línea'],
+      ['Hostname', os.hostname()],
+      ['Plataforma', `${os.platform()} ${os.arch()}`],
+      ['Node', process.version],
+      ['CPU', `${cpus[0]?.model?.slice(0, 25)}`],
+      ['Núcleos', `${cpus.length}`],
+      ['Carga CPU', `${cpuPct}%`],
+      ['RAM', `${fmtSize(totalMem - freeMem)} / ${fmtSize(totalMem)}`],
+      ['Heap', `${fmtSize(heap.heapUsed)} / ${fmtSize(heap.heapTotal)}`],
+      ['Disco', `${fmtSize(diskUsed)} / ${fmtSize(diskTotal)}`],
+      ['Red', net.iface],
+      ['Uptime Bot', fmtUp(process.uptime())],
+      ['Uptime Servidor', fmtUp(os.uptime())],
+    ]
 
-┌─────────────────────────────┐
-│  📡  CONECTIVIDAD            │
-└─────────────────────────────┘
- ├─ 🔁 WA Roundtrip  » ${waRoundtrip} ms
- └─ ⚡ Resp. Bot     » ${totalExec} ms
-
-┌─────────────────────────────┐
-│  🖥️  SERVIDOR                │
-└─────────────────────────────┘
- ├─ ✅ Estado      » En linea
- ├─ 🏷️ Hostname    » ${os.hostname()}
- ├─ 🧩 Plataforma  » ${os.platform()} ${os.arch()}
- └─ 🟢 Node        » ${process.version}
-
-┌─────────────────────────────┐
-│  🧠  CPU                     │
-└─────────────────────────────┘
- ├─ 🔧 Modelo   » ${cpus[0]?.model?.slice(0, 25)}
- ├─ 🧮 Nucleos  » ${cpus.length} cores
- └─ 📈 Carga    » ${cpuPct}% ${bar(parseFloat(cpuPct), 100)}
-
-┌─────────────────────────────┐
-│  💾  MEMORIA                 │
-└─────────────────────────────┘
- ├─ 🧠 RAM   » ${fmtSize(totalMem - freeMem)} / ${fmtSize(totalMem)} ${bar(parseFloat(ramPct), 100)}
- └─ 📦 Heap  » ${fmtSize(heap.heapUsed)} / ${fmtSize(heap.heapTotal)}
-
-┌─────────────────────────────┐
-│  💿  DISCO                   │
-└─────────────────────────────┘
- └─ 🗄️ Uso » ${fmtSize(diskUsed)} / ${fmtSize(diskTotal)} ${bar(parseFloat(diskPct), 100)}
-
-┌─────────────────────────────┐
-│  🌐  RED & UPTIME            │
-└─────────────────────────────┘
- ├─ 📶 Interfaz        » ${netIface}
- ├─ 🚀 Uptime Bot      » ${fmtUp(process.uptime())}
- └─ 🖥️ Uptime Servidor » ${fmtUp(os.uptime())}
-
-╔══════════════════════════════╗
-║  🩺  SALUD DEL SISTEMA       ║
-╠══════════════════════════════╣
-║  ✅ Estado  » OPERATIVO       ║
-║  📡 Monitor » EN TIEMPO REAL  ║
-╠══════════════════════════════╣
-║     © ${namebot} Assistant ✨          ║
-╚══════════════════════════════╝
-`.trim()
+    await sock.sendTable(msg.chat, '⚡ Rendimiento del sistema', ['Métrica', 'Valor'], tableData, msg, {
+      headerText: `${namebot} *ESTADO*\n\n- 🎄 Abajo están las estadísticas de nuestro bot`,
+      footer: '🍃 Monitoreo en tiempo real',
+    })
 
     await sock.sendMessage(msg.chat, { react: { text: '✅', key: msg.key } })
-    await sock.sendMessage(msg.chat, { text: response }, { quoted: msg })
 
   }
 }
