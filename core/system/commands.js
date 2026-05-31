@@ -1,8 +1,7 @@
-export const bodyMenu = `\n> 𖧧 ¡Hola! *@$sender*, Soy *$namebot*, Aquí tienes la lista de comandos$cat
-
-•——————•°•✿•°•——————•
+export const bodyMenu = `•——————•°•✿•°•——————•
 ╰┈➤ ·˚ 𝐇𝐨𝐫𝐢 𝐒𝐚𝐧┊͙◟̆◞̆
 : ̗̀「𝐈𝐬𝐨𝐥𝐚𝐭𝐞𝐝𝐋𝐚𝐛𝐬」
+> 𖧧 ¡Hola! *@$sender*, Soy *$namebot*, Aquí tienes la lista de comandos *(⁠◠⁠‿☆)*
 
 ✿ *ᴅᴇᴠᴇʟᴏᴘᴇʀ ::* $owner
 ꕥ *ᴛʏᴘᴇ ::* $botType
