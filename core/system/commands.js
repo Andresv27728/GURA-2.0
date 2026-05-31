@@ -1,16 +1,19 @@
-export const bodyMenu = `> 𖧧 ¡Hola! *@$sender*, Soy *$namebot*, Aquí tienes la lista de comandos$cat
+export const bodyMenu = `\n> 𖧧 ¡Hola! *@$sender*, Soy *$namebot*, Aquí tienes la lista de comandos$cat
 
-╭┈ࠢ͜┅ࠦ͜͜╾݊͜─ؕ͜─ׄ͜─֬͜─֟͜─֫͜─ׄ͜─ؕ͜─݊͜┈ࠦ͜┅ࠡ͜͜┈࠭͜͜۰۰͜۰
-│✿ *ᴅᴇᴠᴇʟᴏᴘᴇʀ ::* $owner
-│ꕥ *ᴛʏᴘᴇ ::* $botType
-│⸙ *ᴠᴇʀsɪᴏɴ ::* ^3.0 - Latest
-│⚘ *sʏsᴛᴇᴍ/ᴏᴘʀ ::* $device
-│○ *ᴛɪᴍᴇ ::* $tiempo, $tempo
-│𓏸 *ᴜsᴇʀs ::* $users
-│○ *ᴜʀʟ ::* $link
-╰ׅ┈ࠢ͜─ׄ͜─ׄ֟፝͜─ׄ͜─ׄ͜╴ ⋱࣭ ᩴ  ⋮֔   ᩴ ⋰╶͜─ׄ͜─ׄ֟፝͜─ׄ͜─ׄ͜┈ࠢ͜╯ׅ
+•——————•°•✿•°•——————•
+╰┈➤ ·˚ 𝐇𝐨𝐫𝐢 𝐒𝐚𝐧┊͙◟̆◞̆
+: ̗̀「𝐈𝐬𝐨𝐥𝐚𝐭𝐞𝐝𝐋𝐚𝐛𝐬」
+
+✿ *ᴅᴇᴠᴇʟᴏᴘᴇʀ ::* $owner
+ꕥ *ᴛʏᴘᴇ ::* $botType
+⸙ *ᴠᴇʀsɪᴏɴ ::* ^3.0 - Latest
+⚘ *sʏsᴛᴇᴍ/ᴏᴘʀ ::* $device
+○ *ᴛɪᴍᴇ ::* $tiempo, $tempo
+𓏸 *ᴜsᴇʀs ::* $users
+○ *ᴜʀʟ ::* $link
+
 > Vincula un *Socket* con tu número utilizando *$prefixqr* o *$prefixcode*.
-‧꒷︶꒷꒥꒷‧₊˚꒷︶꒷꒥꒷︶꒷˚₊‧꒷꒥꒷︶꒷‧`
+↶*ೃ✧˚. ❃ ↷ ˊ-↶*ೃ✧˚. ❃ ↷ ˊ-`
 
 export const menuObject = {
 economia: `╭┈ࠢ͜─ׄ֟፝͜─ׄ͜─ׄ͜╴𐔌 *ECONOMY* 𐦯╶͜─ׄ͜─ׄ֟፝͜─ׄ͜─ׄ͜
