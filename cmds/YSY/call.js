@@ -3,10 +3,10 @@ import { VoipClient } from 'baileys-caller'
 export default {
   command: ['call', 'llamar'],
   category: 'general',
+  description: 'Realiza una llamada de voz a un número.',
   run: async ({ msg, sock, args }) => {
     const from = msg.chat
 
-    // Verificar que se pasó un número
     if (!args[0]) {
       return await sock.sendMessage(from, {
         text: '📞 Debes indicar un número.\nEjemplo: *.call 1234567890*'
@@ -17,16 +17,16 @@ export default {
 
     if (numero.length < 10) {
       return await sock.sendMessage(from, {
-        text: '❌ Número inválido. Usa el formato internacional.\nEjemplo: *.call 1234567890*'
+        text: '❌ Número inválido. Usa el formato internacional.\nEjemplo: *.call 573001234567*'
       }, { quoted: msg })
     }
 
     await sock.sendMessage(from, {
-      text: `📞 Llamando a *${numero}*...`
+      text: `📞 Iniciando llamada a *${numero}*...`
     }, { quoted: msg })
 
     try {
-      const client = new VoipClient({ authDir: './auth' })
+      const client = new VoipClient({ authDir: './Sessions/Owner' })
       await client.connect()
 
       const call = await client.call(numero, {
@@ -34,28 +34,20 @@ export default {
       })
 
       call.on('ringing', async () => {
-        await sock.sendMessage(from, {
-          text: `🔔 Llamando a *${numero}*... timbrando`
-        })
+        await sock.sendMessage(from, { text: `🔔 Timbrando a *${numero}*...` })
       })
 
       call.on('connected', async () => {
-        await sock.sendMessage(from, {
-          text: `✅ Llamada conectada con *${numero}*`
-        })
+        await sock.sendMessage(from, { text: `✅ Llamada conectada con *${numero}*` })
       })
 
       call.on('ended', async (reason) => {
-        await sock.sendMessage(from, {
-          text: `📵 Llamada finalizada.\n*Razón:* ${reason}`
-        })
+        await sock.sendMessage(from, { text: `📵 Llamada finalizada.\n*Razón:* ${reason}` })
         client.disconnect()
       })
 
       call.on('error', async (err) => {
-        await sock.sendMessage(from, {
-          text: `❌ Error en la llamada: ${err.message}`
-        })
+        await sock.sendMessage(from, { text: `❌ Error: ${err.message}` })
         client.disconnect()
       })
 
