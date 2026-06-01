@@ -106,7 +106,6 @@ export default {
           name: `${éxito ? '🦹 Crimen exitoso' : '🚨 Crimen fallido'} › ${story}`,
           pollVotes: [
             { optionName: `${éxito ? '📈 Ganaste' : '📉 Perdiste'} › ¥${cantidad.toLocaleString()} ${monedas}`, optionVoteCount: cantidad },
-            { optionName: `⛀ Saldo anterior › ¥${saldoAnterior.toLocaleString()} ${monedas}`, optionVoteCount: saldoAnterior },
             { optionName: `⛁ Saldo actual › ¥${saldoFinal.toLocaleString()} ${monedas}`, optionVoteCount: saldoFinal }
           ]
         }
