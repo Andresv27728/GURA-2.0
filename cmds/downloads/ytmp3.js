@@ -113,7 +113,7 @@ const opik_api = 'https://dlp.opik.net/api/download'
 const opik_base = 'https://dlp.opik.net'
 
 const isYTUrl = (url = '') =>
-/^(https?://)?(www.)?(youtube.com|youtu.be)/.+$/i.test(url)
+  /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/i.test(url)
 
 const getVideoId = (text = '') => {
 const match = text.match(
