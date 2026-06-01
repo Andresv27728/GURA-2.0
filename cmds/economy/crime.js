@@ -35,31 +35,38 @@ export default {
       if (remainingTime > 0) {
         return sendInteractive(`ꕥ Debes esperar *${msToTime(remainingTime)}* antes de intentar nuevamente.`);
       }
+
       const éxito = Math.random() < 0.4;
-      const saldoAnterior = (user.coins || 0);
+      const saldoAnterior = user.coins || 0;
       let cantidad;
+      let saldoFinal;
+
       if (éxito) {
         cantidad = Math.floor(Math.random() * (7500 - 5500 + 1)) + 5500;
-        global.db.data.chats[msg.chat].users[msg.sender].coins = saldoAnterior + cantidad;
+        saldoFinal = saldoAnterior + cantidad;
+        global.db.data.chats[msg.chat].users[msg.sender].coins = saldoFinal;
       } else {
         cantidad = Math.floor(Math.random() * (6000 - 4000 + 1)) + 4000;
         const total = (user.coins || 0) + (user.bank || 0);
         if (total >= cantidad) {
           if (user.coins >= cantidad) {
-            global.db.data.chats[msg.chat].users[msg.sender].coins = (user.coins || 0) - cantidad;
+            saldoFinal = saldoAnterior - cantidad;
+            global.db.data.chats[msg.chat].users[msg.sender].coins = saldoFinal;
           } else {
-            const restante = cantidad - (user.coins || 0);
+            const restante = cantidad - saldoAnterior;
             global.db.data.chats[msg.chat].users[msg.sender].coins = 0;
             global.db.data.chats[msg.chat].users[msg.sender].bank = (user.bank || 0) - restante;
+            saldoFinal = 0;
           }
         } else {
           cantidad = total;
           global.db.data.chats[msg.chat].users[msg.sender].coins = 0;
           global.db.data.chats[msg.chat].users[msg.sender].bank = 0;
+          saldoFinal = 0;
         }
       }
+
       global.db.data.chats[msg.chat].users[msg.sender].lastcrime = Date.now() + 7 * 60 * 1000;
-      const saldoFinal = global.db.data.chats[msg.chat].users[msg.sender].coins;
 
       const successMessages = [
         `Hackeaste un cajero automático usando un exploit del sistema y retiraste efectivo sin alertas.`,
@@ -106,21 +113,7 @@ export default {
       }, { quoted: msg });
 
     } catch (e) {
-      const baileys = await import('baileys');
-      const msg2 = baileys.generateWAMessageFromContent(
-        msg.chat,
-        baileys.proto.Message.fromObject({
-          interactiveMessage: {
-            header: { title: ": ̗̀「𝐈𝐬𝐨𝐥𝐚𝐭𝐞𝐝𝐋𝐚𝐛𝐬」" },
-            body: { text: `> Ocurrió un error al ejecutar el comando *${usedPrefix + command}*.\n> [Error: *${e.message}*]` },
-            nativeFlowMessage: {
-              buttons: [{ name: "inapp_signup", buttonParamsJson: "https://yosoyyo-api-ofc.onrender.com" }]
-            }
-          }
-        }),
-        {}
-      );
-      await sock.relayMessage(msg.chat, msg2.message, { messageId: msg2.key.id });
+      return sendInteractive(`> Ocurrió un error al ejecutar el comando *${usedPrefix + command}*.\n> [Error: *${e.message}*]`);
     }
   }
 };
