@@ -11,9 +11,20 @@ export default async (sock, msg) => {
   if (msg.fromMe && !msg.key.participant && msg.isBot) return;  
   const sender = msg.sender;
   let body = msg.body || '';
-  if (!global.rawLogsRAM) global.rawLogsRAM = [];
-  global.rawLogsRAM.push({ timestamp: Date.now(), ...msg });
-  if (global.rawLogsRAM.length > 100) global.rawLogsRAM.shift();
+    if (!global.rawLogsRAM) {
+    global.rawLogsRAM = [];
+    const hookStream = (stream) => {
+      const oldWrite = stream.write;
+      stream.write = function (chunk, encoding, callback) {
+        const str = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+        global.rawLogsRAM.push(str);
+        if (global.rawLogsRAM.length > 100) global.rawLogsRAM.shift();
+        return oldWrite.apply(stream, arguments);
+      };
+    };
+    hookStream(process.stdout);
+    hookStream(process.stderr);
+    }
   initDB(msg, sock);
   
   const from = msg.key.remoteJid;
