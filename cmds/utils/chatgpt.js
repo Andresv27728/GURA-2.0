@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'crypto';
 const QWEN_EMAIL = "isolatedlabs.cn@gmail.com";
 const QWEN_PASSWORD = "IsolatedLabs-67";
 
-const BASE = 'https://chat.qwen.ai';
+const BASE = '[https://chat.qwen.ai](https://chat.qwen.ai)';
 const MODEL = 'qwen3.6-max-preview'; 
 
 const HEADERS = {
@@ -19,6 +19,10 @@ const HEADERS = {
 
 if (!global.qwenActiveChats) {
   global.qwenActiveChats = {};
+}
+
+if (!global.qwenHistory) {
+  global.qwenHistory = {};
 }
 
 function sha256(text) {
@@ -276,7 +280,22 @@ export default {
     const username = user?.name || 'usuario';
     const botname = settings.botname || 'Bot';
 
-    const basePrompt = `Tu nombre es ${botname}, eres una IA amigable, divertida y útil. Hablas en español. Llamarás a la persona por su nombre: ${username}.`;
+    if (!global.qwenHistory[msg.chat]) {
+      global.qwenHistory[msg.chat] = [];
+    }
+
+    const history = global.qwenHistory[msg.chat];
+    history.push({ role: 'user', content: text });
+
+    if (history.length > 15) {
+      history.shift();
+    }
+
+    const conversationContext = history
+      .map(m => `${m.role === 'user' ? username : botname}: ${m.content}`)
+      .join('\n\n');
+
+    const fullPrompt = `Tu nombre es ${botname}, eres una IA amigable, divertida y útil. Hablas en español. Llamarás a la persona por su nombre: ${username}.\n\n[Historial de conversación]\n${conversationContext}`;
 
     try {
       const { key } = await sock.sendMessage(
@@ -287,39 +306,21 @@ export default {
 
       await msg.react('🕒');
 
-      const result = await qwen(`${basePrompt}\n\nUsuario: ${text}`, msg.chat);
+      const result = await qwen(fullPrompt, msg.chat);
 
       if (!result?.status || !result.text) {
+        history.pop();
         return sock.reply(msg.chat, '《✧》 No se pudo obtener una *respuesta* válida', msg);
       }
 
       const clean = result.text.trim();
-      const hasCodeBlock = clean.includes('```');
+      history.push({ role: 'assistant', content: clean });
 
-      if (hasCodeBlock) {
-        const filename = `ꕥ respuesta.txt`;
-        const tableData = {
-          title: '✎ Qwen Code',
-          headers: ['Campo', 'Valor'],
-          rows: [
-            ['Líneas', String(clean.split('\n').length)],
-            ['Caracteres', String(clean.length)],
-          ],
-        };
-
-        await sock.sendMessage(msg.chat, {
-          text: `ꕥ *Qwen* · Bloque de código detectado`,
-          edit: key,
-        });
-
-        await sock.sendCodeMessage(msg.chat, filename, clean, msg, tableData);
-      } else {
-        await sock.sendMessage(msg.chat, { text: clean, edit: key });
-      }
-
+      await sock.sendMessage(msg.chat, { text: clean, edit: key });
       await msg.react('✔️');
       
     } catch (e) {
+      history.pop();
       await msg.reply(
         `> Ocurrió un error al ejecutar el comando *${usedPrefix + command}*.\n> [Error: *${e.message}*]`
       );
