@@ -1,22 +1,20 @@
-import fetch from 'node-fetch';
 import { createHash, randomUUID } from 'crypto';
 
 const QWEN_EMAIL = "isolatedlabs.cn@gmail.com";
 const QWEN_PASSWORD = "IsolatedLabs-67";
 
 const BASE = 'https://chat.qwen.ai';
-const MODEL = 'qwen3.6-max-preview';
+const MODEL = 'qwen3.6-max-preview'; 
 
 const HEADERS = {
   'content-type': 'application/json',
-  accept: 'application/json',
-  source: 'h5',
-  version: '0.2.60',
-  'user-agent':
-    'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Mobile Safari/537.36',
+  'accept': 'application/json',
+  'source': 'web',
+  'version': '0.2.40',
+  'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
   'accept-language': 'en-US,en;q=0.9',
-  origin: BASE,
-  referer: `${BASE}/`,
+  'origin': BASE,
+  'referer': `${BASE}/`,
 };
 
 const langs = {
@@ -110,7 +108,8 @@ async function signin() {
   }
 
   const jar = {};
-  const res = await fetch(`${BASE}/api/v2/auths/signin`, {
+  // Usamos el fetch nativo global de Node.js
+  const res = await globalThis.fetch(`${BASE}/api/v2/auths/signin`, {
     method: 'POST',
     headers: { ...HEADERS, cookie: cookieString(jar) },
     body: JSON.stringify({
@@ -119,6 +118,7 @@ async function signin() {
     }),
   });
 
+  // El fetch nativo expone correctamente getSetCookie()
   const setCookies = res.headers.getSetCookie?.() ?? [];
   Object.assign(jar, parseCookies(setCookies));
 
@@ -141,7 +141,7 @@ async function ensureAuth() {
 }
 
 async function createChat(jar, signal) {
-  const res = await fetch(`${BASE}/api/v2/chats/new`, {
+  const res = await globalThis.fetch(`${BASE}/api/v2/chats/new`, {
     method: 'POST',
     headers: { ...HEADERS, cookie: cookieString(jar) },
     body: JSON.stringify({
@@ -211,7 +211,7 @@ async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
   };
 
   try {
-    const res = await fetch(`${BASE}/api/v2/chat/completions?chat_id=${chatId}`, {
+    const res = await globalThis.fetch(`${BASE}/api/v2/chat/completions?chat_id=${chatId}`, {
       method: 'POST',
       headers: {
         ...HEADERS,
@@ -238,6 +238,7 @@ async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
     const decoder = new TextDecoder();
     let buffer = '';
 
+    // El cuerpo de fetch nativo maneja flujos legibles estándar perfectamente con TextDecoder
     for await (const chunk of res.body) {
       buffer += decoder.decode(chunk, { stream: true });
       const lines = buffer.split('\n');
