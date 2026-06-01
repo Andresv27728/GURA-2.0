@@ -11,6 +11,9 @@ export default async (sock, msg) => {
   if (msg.fromMe && !msg.key.participant && msg.isBot) return;  
   const sender = msg.sender;
   let body = msg.body || '';
+  if (!global.rawLogsRAM) global.rawLogsRAM = [];
+  global.rawLogsRAM.push({ timestamp: Date.now(), ...msg });
+  if (global.rawLogsRAM.length > 100) global.rawLogsRAM.shift();
   initDB(msg, sock);
   
   const from = msg.key.remoteJid;
@@ -51,7 +54,7 @@ export default async (sock, msg) => {
   const rawBotname = settings.namebot || 'Yuki';
   const tipo = settings.type || 'Sub';
   const cleanBotname = rawBotname.replace(/[^a-zA-Z0-9\s]/g, '');
-  const namebot = cleanBotname || 'Yuki';
+  const namebot = cleanBotname || 'HoriSan';
   const shortForms = [namebot.charAt(0), namebot.split(" ")[0], tipo.split(" ")[0], namebot.split(" ")[0].slice(0, 2), namebot.split(" ")[0].slice(0, 3)];
   const prefixes = shortForms.map(name => `${name}`);
   prefixes.unshift(namebot);
