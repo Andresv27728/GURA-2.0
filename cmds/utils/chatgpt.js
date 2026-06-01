@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'crypto';
 const QWEN_EMAIL = "isolatedlabs.cn@gmail.com";
 const QWEN_PASSWORD = "IsolatedLabs-67";
 
-const BASE = '[https://chat.qwen.ai](https://chat.qwen.ai)';
+const BASE = 'https://chat.qwen.ai';
 const MODEL = 'qwen3.6-max-preview'; 
 
 const HEADERS = {
