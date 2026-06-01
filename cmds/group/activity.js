@@ -6,10 +6,10 @@ export default {
 
     await sock.sendMessage(msg.chat, {
       pollResultMessage: {
-        name: '📊 Actividad del Grupo',
+        name: '˚ ༘ Actividad del Grupo ⋆˚',
         pollVotes: [
-          { optionName: '🟢 Activos', optionVoteCount: participants.length },
-          { optionName: '🔴 Inactivos', optionVoteCount: 0 }
+          { optionName: 'ׂׂૢ Activos', optionVoteCount: participants.length },
+          { optionName: 'ׂׂૢ Inactivos', optionVoteCount: 0 }
         ]
       }
     }, { quoted: msg })
