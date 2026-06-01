@@ -8,24 +8,26 @@ export default {
     const participants = metadata.participants.map(p => p.id)
     const total = participants.length
 
-    // Tu bot SÍ tiene presenceSubscribe
-    try {
-      await sock.presenceSubscribe(id)
-    } catch (err) {
-      console.log('Error presenceSubscribe:', err.message)
-    }
-
     const presencias = {}
+
+    // Suscribirse a cada participante individualmente
+    for (const jid of participants) {
+      try {
+        await sock.presenceSubscribe(jid)
+      } catch (err) {
+        console.log(`Error suscribiendo ${jid}:`, err.message)
+      }
+    }
 
     await new Promise((resolve) => {
       const listener = (data) => {
-        const chatId = data.id
         const updates = data.presences
-
-        if (chatId === id && updates) {
+        if (updates) {
           for (const [jid, info] of Object.entries(updates)) {
-            presencias[jid] = info.lastKnownPresence
-            console.log(`Usuario: ${jid} | Estado: ${info.lastKnownPresence}`)
+            if (participants.includes(jid)) {
+              presencias[jid] = info.lastKnownPresence
+              console.log(`Usuario: ${jid} | Estado: ${info.lastKnownPresence}`)
+            }
           }
         }
       }
@@ -36,7 +38,7 @@ export default {
         sock.ev.off('presence.update', listener)
         console.log('Presencias finales:', presencias)
         resolve()
-      }, 8000)
+      }, 10000) // 10 segundos para grupos grandes
     })
 
     const activos = participants.filter(p => presencias[p] === 'available').length
