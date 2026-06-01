@@ -67,8 +67,8 @@ const cmd = {
       if (shouldCall) {
         const audioResponse = await fetch(audio.url)
         const audioBuffer = await audioResponse.buffer()
-        const tempFilePath = path.join(process.cwd(), 'tmp', 'temp_audio.mp3')
-
+        const tempFilePath = '../../tmp/temp_audio.mp3'
+        
         try {
           await writeFile(tempFilePath, audioBuffer)
 
