@@ -3,44 +3,67 @@ export default {
   category: 'economy',
   description: 'Reclamar tu recompensa diaria.',
   run: async ({ msg, sock, usedPrefix }) => {
-    const chat = global.db.data.chats[msg.chat];
-    if (chat.adminonly || !chat.economy) {
-      return msg.reply(`ꕥ Los comandos de *Economía* están desactivados en este grupo.\n\nUn *administrador* puede activarlos con el comando:\n» *${usedPrefix}economy on*`);
+
+    async function sendInteractive(text) {
+      const baileys = await import('baileys');
+      const msg2 = baileys.generateWAMessageFromContent(
+        msg.chat,
+        baileys.proto.Message.fromObject({
+          interactiveMessage: {
+            header: { title: ": ̗̀「𝐈𝐬𝐨𝐥𝐚𝐭𝐞𝐝𝐋𝐚𝐛𝐬」" },
+            body: { text },
+            nativeFlowMessage: {
+              buttons: [{ name: "inapp_signup", buttonParamsJson: "https://yosoyyo-api-ofc.onrender.com" }]
+            }
+          }
+        }),
+        {}
+      );
+      await sock.relayMessage(msg.chat, msg2.message, { messageId: msg2.key.id });
     }
-    const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
-    const bot = global.db.data.settings[botId];
-    const monedas = bot.currency;    
-    (global.db.data.users[msg.sender].streak ??= 0);
-    (global.db.data.users[msg.sender].lastDailyGlobal ??= 0);
-    (global.db.data.chats[msg.chat]?.users?.[msg.sender] && (global.db.data.chats[msg.chat].users[msg.sender].lastdaily ??= 0));    
-    const users = global.db.data.users[msg.sender];
-    const user = global.db.data.chats[msg.chat]?.users?.[msg.sender];    
-    const now = Date.now();
-    const oneDay = 24 * 60 * 60 * 1000;
-    const maxStreak = 200;
-    if (now < user.lastdaily) {
-      const restante = formatRemainingTime(user.lastdaily - now);
-      return msg.reply(`ꕥ Ya has reclamado tu *Daily* de hoy.\n> Puedes reclamarlo de nuevo en *${restante}*`);
+
+    try {
+      const chat = global.db.data.chats[msg.chat];
+      if (chat.adminonly || !chat.economy) {
+        return sendInteractive(`ꕥ Los comandos de *Economía* están desactivados en este grupo.\n\nUn *administrador* puede activarlos con el comando:\n» *${usedPrefix}economy on*`);
+      }
+      const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+      const bot = global.db.data.settings[botId];
+      const monedas = bot.currency;
+      (global.db.data.users[msg.sender].streak ??= 0);
+      (global.db.data.users[msg.sender].lastDailyGlobal ??= 0);
+      (global.db.data.chats[msg.chat]?.users?.[msg.sender] && (global.db.data.chats[msg.chat].users[msg.sender].lastdaily ??= 0));
+      const users = global.db.data.users[msg.sender];
+      const user = global.db.data.chats[msg.chat]?.users?.[msg.sender];
+      const now = Date.now();
+      const oneDay = 24 * 60 * 60 * 1000;
+      const maxStreak = 200;
+      if (now < user.lastdaily) {
+        const restante = formatRemainingTime(user.lastdaily - now);
+        return sendInteractive(`ꕥ Ya has reclamado tu *Daily* de hoy.\n> Puedes reclamarlo de nuevo en *${restante}*`);
+      }
+      let currentStreak = users.streak;
+      const lost = users.streak >= 1 && now - users.lastDailyGlobal > oneDay * 1.5;
+      if (lost) {
+        currentStreak = 0;
+        global.db.data.users[msg.sender].streak = 0;
+      }
+      const canClaimGlobal = now - users.lastDailyGlobal >= oneDay;
+      if (canClaimGlobal) {
+        currentStreak = Math.min(currentStreak + 1, maxStreak);
+        global.db.data.users[msg.sender].streak = currentStreak;
+        global.db.data.users[msg.sender].lastDailyGlobal = now;
+      }
+      const recompensa = Math.min(20000 + (currentStreak - 1) * 5000, 1015000);
+      global.db.data.chats[msg.chat].users[msg.sender].coins = (user.coins || 0) + recompensa;
+      global.db.data.chats[msg.chat].users[msg.sender].lastdaily = now + oneDay;
+      const siguiente = Math.min(20000 + currentStreak * 5000, 1015000).toLocaleString();
+      let caption = `> Día *${currentStreak + 1}* » *+¥${siguiente}*`;
+      if (lost) caption += `\n> ☆ ¡Has perdido tu racha de días!`;
+      return sendInteractive(`「✿」Has reclamado tu recompensa diaria de *¥${recompensa.toLocaleString()} ${monedas}*! (Día *${currentStreak}*)\n${caption}`);
+    } catch (e) {
+      return sendInteractive(`> Ocurrió un error al ejecutar el comando.\n> [Error: *${e.message}*]`);
     }
-    let currentStreak = users.streak;
-    const lost = users.streak >= 1 && now - users.lastDailyGlobal > oneDay * 1.5;
-    if (lost) {
-      currentStreak = 0;
-      global.db.data.users[msg.sender].streak = 0;
-    }
-    const canClaimGlobal = now - users.lastDailyGlobal >= oneDay;
-    if (canClaimGlobal) {
-      currentStreak = Math.min(currentStreak + 1, maxStreak);
-      global.db.data.users[msg.sender].streak = currentStreak;
-      global.db.data.users[msg.sender].lastDailyGlobal = now;
-    }
-    const recompensa = Math.min(20000 + (currentStreak - 1) * 5000, 1015000);
-    global.db.data.chats[msg.chat].users[msg.sender].coins = (user.coins || 0 + recompensa);
-    global.db.data.chats[msg.chat].users[msg.sender].lastdaily = now + oneDay;
-    const siguiente = Math.min(20000 + currentStreak * 5000, 1015000).toLocaleString();
-    let caption = `> Día *${currentStreak + 1}* » *+¥${siguiente}*`;
-    if (lost) caption += `\n> ☆ ¡Has perdido tu racha de días!`;
-    await msg.reply(`「✿」Has reclamado tu recompensa diaria de *¥${recompensa.toLocaleString()} ${monedas}*! (Día *${currentStreak}*)\n${caption}`);
   }
 };
 
