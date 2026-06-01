@@ -89,7 +89,7 @@ async function createChat(jar, signal) {
     method: 'POST',
     headers: { ...HEADERS, cookie: cookieString(jar) },
     body: JSON.stringify({
-      title: 'WhatsApp Bot Session',
+      title: 'Hori-MD',
       models: [MODEL],
       chat_mode: 'normal',
       chat_type: 't2t',
@@ -293,10 +293,10 @@ export default {
       .map(m => `${m.role === 'user' ? username : botname}: ${m.content}`)  
       .join('\n\n');  
 
-    const fullPrompt = `Tu nombre es ${botname}, eres una IA amigable, divertida y útil. Hablas en español. Llamarás a la persona por su nombre: ${username}.\n\n[Historial de conversación]\n${conversationContext}`;  
+    const fullPrompt = `Hola, Tu nombre es ${botname}, Usa la sintaxis de WhatsApp al hablar, Ya que estás en un Grupo/Chat de WhatsApp, Eres propiedad de la organización "Isolated Labs", Comportate como una Inteligencia Artificial que se adapta al humor del usuario sin sonar exagerado Pero a la vez simula el comportamiento del personaje del anime "Hori-san to Miyamura-kun" Exactamente eres "Hori", Llamarás al usuario por su nombre: ${username}.\n\n[Historial de conversación]\n${conversationContext}`;  
 
     try {  
-      await msg.reply("ꕥ Qwen está procesando tu respuesta...");
+      await msg.reply("ꕥ *Qwen* está procesando tu respuesta.");
       await msg.react('🕒');  
 
       const result = await qwen(msg.chat, fullPrompt);  
