@@ -2,7 +2,7 @@ export default {
   command: ['cf', 'flip', 'coinflip'],
   category: 'economy',
   description: 'Apostar coins en un cara o cruz.',
-  run: async ({ msg, sock, args, usedPrefix, command, text }) => {
+  run: async ({ msg, sock, args, usedPrefix, command }) => {
     const chat = global.db.data.chats[msg.chat];
     if (chat.adminonly || !chat.economy) {
       return msg.reply(`ꕥ Los comandos de *Economía* están desactivados en este grupo.\n\nUn *administrador* puede activarlos con el comando:\n» *${usedPrefix}economy on*`);
@@ -38,22 +38,32 @@ export default {
     if (cantidad > user.coins) {
       return msg.reply(`ꕥ No tienes suficientes *${monedas}* fuera del banco para apostar, tienes *¥${user.coins.toLocaleString()} ${monedas}*.`);
     }
-    global.db.data.chats[msg.chat].users[msg.sender].lastcoinflip = Date.now( + cooldown);
+    global.db.data.chats[msg.chat].users[msg.sender].lastcoinflip = Date.now() + cooldown;
     const resultado = Math.random() < 0.5 ? 'cara' : 'cruz';
     const acierto = resultado === eleccion;
     const cambio = acierto ? cantidad : -cantidad;
-    const newCoins = (user.coins || 0) + cambio;
+    const saldoAnterior = user.coins || 0;
+    const newCoins = saldoAnterior + cambio;
     global.db.data.chats[msg.chat].users[msg.sender].coins = newCoins < 0 ? 0 : newCoins;
-    const mensaje = `「✿」La moneda ha caído en *${capitalize(resultado)}* y has ${acierto ? 'ganado' : 'perdido'} *¥${Math.abs(cambio).toLocaleString()} ${monedas}*!\n> Tu elección fue *${capitalize(eleccion)}*`;
-    await sock.sendMessage(msg.chat, { text: mensaje }, { quoted: msg });
+    const saldoFinal = newCoins < 0 ? 0 : newCoins;
+
+    await sock.sendMessage(msg.chat, {
+      pollResultMessage: {
+        name: `${acierto ? '🎉' : '💸'} Cara o Cruz › La moneda cayó en *${capitalize(resultado)}*`,
+        pollVotes: [
+          { optionName: `🎯 Tu elección › ${capitalize(eleccion)}`, optionVoteCount: 1 },
+          { optionName: `${acierto ? '📈 Ganaste' : '📉 Perdiste'} › ¥${Math.abs(cambio).toLocaleString()} ${monedas}`, optionVoteCount: Math.abs(cambio) },
+          { optionName: `⛀ Saldo anterior › ¥${saldoAnterior.toLocaleString()} ${monedas}`, optionVoteCount: saldoAnterior },
+          { optionName: `⛁ Saldo actual › ¥${saldoFinal.toLocaleString()} ${monedas}`, optionVoteCount: saldoFinal }
+        ]
+      }
+    }, { quoted: msg });
   }
 };
-
 function msToTime(duration) {
   const seconds = Math.floor(duration / 1000);
   return `${seconds} segundo${seconds !== 1 ? 's' : ''}`;
 }
-
 function capitalize(txt) {
   return txt.charAt(0).toUpperCase() + txt.slice(1);
 }
