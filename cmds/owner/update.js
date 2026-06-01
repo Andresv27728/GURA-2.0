@@ -37,16 +37,49 @@ export default {
   category: 'owner',
   description: 'Actualizar y recargar los comandos del bot.',
   isOwner: true,
-  run: async ({ msg, sock, text }) => {
-    exec('git pull', async (error, stdout, stderr) => {
-      await reloadCommands(path.join(__dirname, '..'));
-      let replyMsg = '';
-      if (stdout.includes('Already up to date.')) {
-        replyMsg = 'ꕥ *Estado:* Todo está actualizado';
-      } else {
-        replyMsg = `*Actualización completada*\n\n${stdout}`;
+  run: async ({ msg, sock }) => {
+    exec('git pull', async (error, stdout) => {
+      try {
+        await reloadCommands(path.join(__dirname, '..'));
+
+        const replyText = stdout.includes('Already up to date.')
+          ? 'ꕥ *Estado:* Todo está actualizado'
+          : `*Actualización completada*\n\n${stdout}`;
+
+        const baileys = await import('baileys');
+
+        const msg2 = baileys.generateWAMessageFromContent(
+          msg.chat,
+          baileys.proto.Message.fromObject({
+            interactiveMessage: {
+              header: {
+                title: ": ̗̀「𝐈𝐬𝐨𝐥𝐚𝐭𝐞𝐝𝐋𝐚𝐛𝐬」"
+              },
+              body: {
+                text: replyText
+              },
+              nativeFlowMessage: {
+                buttons: [
+                  {
+                    name: "inapp_signup",
+                    buttonParamsJson: "https://yosoyyo-api-ofc.onrender.com"
+                  }
+                ]
+              }
+            }
+          }),
+          {}
+        );
+
+        await sock.relayMessage(
+          msg.chat,
+          msg2.message,
+          { messageId: msg2.key.id }
+        );
+
+      } catch (e) {
+        return msg.reply(`> Ocurrió un error al ejecutar el comando.\n> [Error: *${e.message}*]`);
       }
-      await sock.sendMessage(msg.key.remoteJid, { text: replyMsg }, { quoted: msg });
     });
   }
 };
