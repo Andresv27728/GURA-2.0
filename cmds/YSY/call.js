@@ -1,5 +1,15 @@
 import { VoipClient } from 'baileys-caller'
 
+// Cliente global para no recrearlo cada vez
+let voipClient = null
+
+async function getClient() {
+  if (voipClient) return voipClient
+  voipClient = new VoipClient({ authDir: './Sessions/Owner' })
+  await voipClient.connect()
+  return voipClient
+}
+
 export default {
   command: ['call', 'llamar'],
   category: 'general',
@@ -9,7 +19,7 @@ export default {
 
     if (!args[0]) {
       return await sock.sendMessage(from, {
-        text: '📞 Debes indicar un número.\nEjemplo: *.call 1234567890*'
+        text: '📞 Debes indicar un número.\nEjemplo: *.call 573001234567*'
       }, { quoted: msg })
     }
 
@@ -17,7 +27,7 @@ export default {
 
     if (numero.length < 10) {
       return await sock.sendMessage(from, {
-        text: '❌ Número inválido. Usa el formato internacional.\nEjemplo: *.call 573001234567*'
+        text: '❌ Número inválido. Usa formato internacional.\nEjemplo: *.call 573001234567*'
       }, { quoted: msg })
     }
 
@@ -26,8 +36,7 @@ export default {
     }, { quoted: msg })
 
     try {
-      const client = new VoipClient({ authDir: './Sessions/Owner' })
-      await client.connect()
+      const client = await getClient()
 
       const call = await client.call(numero, {
         audioSource: 'silence'
@@ -43,17 +52,17 @@ export default {
 
       call.on('ended', async (reason) => {
         await sock.sendMessage(from, { text: `📵 Llamada finalizada.\n*Razón:* ${reason}` })
-        client.disconnect()
       })
 
       call.on('error', async (err) => {
         await sock.sendMessage(from, { text: `❌ Error: ${err.message}` })
-        client.disconnect()
+        voipClient = null // resetear para reconectar la próxima vez
       })
 
       await call.waitForEnd()
 
     } catch (err) {
+      voipClient = null // resetear si falla
       await sock.sendMessage(from, {
         text: `❌ No se pudo realizar la llamada.\n*Error:* ${err.message}`
       }, { quoted: msg })
