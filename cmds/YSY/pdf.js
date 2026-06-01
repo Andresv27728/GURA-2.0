@@ -23,8 +23,12 @@ export default {
         }
       }
 
-      // ================= CAMBIA SOLO ESTO =================
-      const archivoUrl = 'https://raw.githubusercontent.com/Andresv27728/dtbs/main/LOGOS/IMG_20260317_215244_926.jpg' // <-- link a tu PDF o imagen
+      // ================= THUMBNAIL =================
+      const resArchivo = await axios.get('https://raw.githubusercontent.com/Andresv27728/dtbs/main/LOGOS/IMG_20260317_215244_926.jpg', { responseType: 'arraybuffer' })
+      const thumbResized = await resizeImage(Buffer.from(resArchivo.data), 300, 150)
+
+      // ================= VARIABLES =================
+      const dcc = 'documento.pdf'; const mmt = 'application/pdf'
       const evn = 'Evento'
       const cdg = 'YO SOY YO'
       const msgText = `Holaas, Como estan`
@@ -37,74 +41,30 @@ export default {
       const bt2 = ''; const bi2 = ''
       const bt3 = ''; const bi3 = ''
       const frm = 'Formulario'
-      // =====================================================
-
-      // ================= DETECTAR TIPO =================
-      const urlLower = archivoUrl.toLowerCase().split('?')[0]
-      const esImagen = /\.(jpg|jpeg|png|webp|gif)$/.test(urlLower)
-      const esPdf = urlLower.endsWith('.pdf')
-
-      const mimeMap = {
-        jpg: 'image/jpeg', jpeg: 'image/jpeg',
-        png: 'image/png', webp: 'image/webp',
-        gif: 'image/gif', pdf: 'application/pdf'
-      }
-      const ext = urlLower.split('.').pop()
-      const mimetype = mimeMap[ext] || 'application/octet-stream'
-      const fileName = esPdf ? 'documento.pdf' : `archivo.${ext}`
-
-      const resArchivo = await axios.get(archivoUrl, { responseType: 'arraybuffer' })
-      const archivoBuffer = Buffer.from(resArchivo.data)
-
-      // ================= THUMBNAIL =================
-      let thumbResized = null
-      try {
-        if (esImagen) {
-          thumbResized = await resizeImage(archivoBuffer, 300, 150)
-        } else {
-          // Para PDF u otros, usar imagen por defecto
-          const defaultThumb = await axios.get('https://i.imgur.com/your-thumb.jpg', { responseType: 'arraybuffer' })
-          thumbResized = await resizeImage(Buffer.from(defaultThumb.data), 300, 150)
-        }
-      } catch {}
-
-      // ================= HEADER SEGUN TIPO =================
-      let header
-      if (esImagen) {
-        header = {
-          imageMessage: {
-            url: archivoUrl,
-            mimetype: mimetype,
-            jpegThumbnail: thumbResized || null,
-            contextInfo: {
-              mentionedJid: [msg.sender],
-              groupMentions: [],
-              forwardingScore: 777,
-              isForwarded: true
-            }
-          },
-          hasMediaAttachment: true
-        }
-      } else {
-        header = {
-          documentMessage: {
-            url: archivoUrl,
-            mimetype: mimetype,
-            fileName: fileName,
-            jpegThumbnail: thumbResized || null,
-            contextInfo: {
-              mentionedJid: [msg.sender],
-              groupMentions: [],
-              forwardingScore: 777,
-              isForwarded: true
-            }
-          },
-          hasMediaAttachment: true
-        }
-      }
 
       const nativeFlowPayload = {
-        header,
+        header: {
+          documentMessage: {
+            url: 'https://mmg.whatsapp.net/v/t62.7119-24/539012045_745537058346694_1512031191239726227_n.enc',
+            mimetype: mmt,
+            fileSha256: Buffer.from('fa09afbc207a724252bae1b764ecc7b13060440ba47a3bf59e77f01924924bfe', 'hex'),
+            fileLength: { low: -727379969, high: 232, unsigned: true },
+            pageCount: 0,
+            mediaKey: Buffer.from('3163ba7c8db6dd363c4f48bda2735cc0d0413e57567f0a758f514f282889173c', 'hex'),
+            fileName: dcc,
+            fileEncSha256: Buffer.from('652f2ff6d8a8dae9f5c9654e386de5c01c623fe98d81a28f63dfb0979a44a22f', 'hex'),
+            directPath: '/v/t62.7119-24/539012045_745537058346694_1512031191239726227_n.enc',
+            mediaKeyTimestamp: { low: 1756370084, high: 0, unsigned: false },
+            jpegThumbnail: thumbResized || null,
+            contextInfo: {
+              mentionedJid: [msg.sender],
+              groupMentions: [],
+              forwardingScore: 777,
+              isForwarded: true
+            }
+          },
+          hasMediaAttachment: true
+        },
         body: { text: msgText },
         footer: { text: fot },
         nativeFlowMessage: {
