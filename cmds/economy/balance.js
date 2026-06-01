@@ -32,4 +32,6 @@ export default {
       { optionName: `⛁ Total › ¥${total.toLocaleString()} ${monedas}`, optionVoteCount: total }
     ]
   }
-}, { quoted: msg });
+}, { quoted: msg }); 
+}
+};
