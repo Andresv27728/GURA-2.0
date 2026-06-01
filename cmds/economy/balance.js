@@ -24,14 +24,14 @@ export default {
     const total = (user.coins || 0) + (user.bank || 0);
 
     await sock.sendMessage(chatId, {
-      pollResultMessage: {
-        name: `✿ Balance de ${users?.name || who.split('@')[0]}`,
-        pollVotes: [
-          { optionName: `⛀ Cartera › ¥${user.coins?.toLocaleString() || 0} ${monedas}`, optionVoteCount: user.coins || 0 },
-          { optionName: `⚿ Banco › ¥${user.bank?.toLocaleString() || 0} ${monedas}`, optionVoteCount: user.bank || 0 },
-          { optionName: `⛁ Total › ¥${total.toLocaleString()} ${monedas}`, optionVoteCount: total }
-        ]
-      }
-    }, { quoted: msg });
+  pollResultMessage: {
+    name: `✿ Balance de ${users?.name || who.split('@')[0]}`,
+    pollVotes: [
+      { optionName: `⛀ Cartera › ¥${user.coins?.toLocaleString() || 0} ${monedas}`, optionVoteCount: user.coins || 0 },
+      { optionName: `⚿ Banco › ¥${user.bank?.toLocaleString() || 0} ${monedas}`, optionVoteCount: user.bank || 0 },
+      { optionName: `⛁ Total › ¥${total.toLocaleString()} ${monedas}`, optionVoteCount: total },
+      { optionName: `💡 Deposita con ${usedPrefix}deposit`, optionVoteCount: 0 }
+    ]
   }
+}, { quoted: msg });
 };
