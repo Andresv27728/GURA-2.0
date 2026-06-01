@@ -1,11 +1,10 @@
 import { VoipClient } from 'baileys-caller'
 
-// Cliente global para no recrearlo cada vez
 let voipClient = null
 
 async function getClient() {
   if (voipClient) return voipClient
-  voipClient = new VoipClient({ authDir: './Sessions/Owner' })
+  voipClient = new VoipClient({ authDir: './Sessions/Caller' }) // sesión separada
   await voipClient.connect()
   return voipClient
 }
@@ -55,14 +54,14 @@ export default {
       })
 
       call.on('error', async (err) => {
+        voipClient = null
         await sock.sendMessage(from, { text: `❌ Error: ${err.message}` })
-        voipClient = null // resetear para reconectar la próxima vez
       })
 
       await call.waitForEnd()
 
     } catch (err) {
-      voipClient = null // resetear si falla
+      voipClient = null
       await sock.sendMessage(from, {
         text: `❌ No se pudo realizar la llamada.\n*Error:* ${err.message}`
       }, { quoted: msg })
