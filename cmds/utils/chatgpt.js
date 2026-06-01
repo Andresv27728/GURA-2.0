@@ -17,10 +17,6 @@ const HEADERS = {
   'referer': `${BASE}/`,
 };
 
-if (!global.qwenActiveChats) {
-  global.qwenActiveChats = {};
-}
-
 if (!global.qwenHistory) {
   global.qwenHistory = {};
 }
@@ -90,7 +86,7 @@ async function createChat(jar, signal) {
     method: 'POST',
     headers: { ...HEADERS, cookie: cookieString(jar) },
     body: JSON.stringify({
-      title: 'New Chat',
+      title: 'WhatsApp Bot Session',
       models: [MODEL],
       chat_mode: 'normal',
       chat_type: 't2t',
@@ -223,20 +219,18 @@ async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
   }
 }
 
-async function qwen(prompt, chatKey, onChunk = null, options = {}) {
+async function qwen(prompt, options = {}) {
   const MAX_RETRIES = 2;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const jar = await ensureAuth();
       
-      let chatId = global.qwenActiveChats[chatKey];
-      if (!chatId) {
-        chatId = await createChat(jar, options.signal);
-        global.qwenActiveChats[chatKey] = chatId;
+      if (!global.qwenGlobalChatId) {
+        global.qwenGlobalChatId = await createChat(jar, options.signal);
       }
 
-      const result = await streamCompletion(chatId, prompt, jar, onChunk, options.signal);
+      const result = await streamCompletion(global.qwenGlobalChatId, prompt, jar, null, options.signal);
 
       return {
         status: true,
@@ -254,7 +248,7 @@ async function qwen(prompt, chatKey, onChunk = null, options = {}) {
 
       if (isAuthError && attempt < MAX_RETRIES) {
         cachedJar = null;
-        delete global.qwenActiveChats[chatKey];
+        global.qwenGlobalChatId = null;
         continue;
       }
 
@@ -306,14 +300,17 @@ export default {
 
       await msg.react('🕒');
 
-      const result = await qwen(fullPrompt, msg.chat);
+      const result = await qwen(fullPrompt);
 
       if (!result?.status || !result.text) {
         history.pop();
         return sock.reply(msg.chat, '《✧》 No se pudo obtener una *respuesta* válida', msg);
       }
 
-      const clean = result.text.trim();
+      let clean = result.text.trim();
+      
+      clean = clean.replace(/```[a-zA-Z0-9_+-]+/g, '```');
+
       history.push({ role: 'assistant', content: clean });
 
       await sock.sendMessage(msg.chat, { text: clean, edit: key });
