@@ -8,9 +8,14 @@ export default {
     const metadata = await sock.groupMetadata(id)
     const total = metadata.participants.length
 
-    // Detectar activos desde el historial de mensajes (misma lógica que el código base)
-    const participantesActivos = Object.values(sock.chats[id]?.messages || {})
-      .map((item) => item.key.participant)
+    // Detectar activos con fallback por si chats no existe
+    const mensajes = sock.chats?.[id]?.messages 
+      ?? sock.store?.messages?.[id]?.array 
+      ?? sock.messageStore?.[id] 
+      ?? {}
+
+    const participantesActivos = Object.values(mensajes)
+      .map((item) => item.key?.participant)
       .filter((v, i, self) => v && self.indexOf(v) === i)
 
     const activos = participantesActivos.length
