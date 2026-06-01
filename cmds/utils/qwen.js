@@ -20,6 +20,10 @@ if (!global.qwenHistory) {
   global.qwenHistory = {};
 }
 
+if (!global.qwenGlobalChatIds) {
+  global.qwenGlobalChatIds = {};
+}
+
 function sha256(text) {
   return createHash('sha256').update(text).digest('hex');
 }
@@ -164,171 +168,182 @@ async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
       signal: controller.signal,
     });
 
-    if (!res.ok) {
-      const text = await res.text();
-      if (res.status === 401 || res.status === 403) {
-        cachedJar = null;
-        throw new Error(`Qwen auth expirado (${res.status}): ${text.slice(0, 200)}`);
-      }
-      throw new Error(`Qwen completion falló (${res.status}): ${text.slice(0, 200)}`);
-    }
+    if (!res.ok) {  
+      const text = await res.text();  
+      if (res.status === 401 || res.status === 403) {  
+        cachedJar = null;  
+        throw new Error(`Qwen auth expirado (${res.status}): ${text.slice(0, 200)}`);  
+      }  
+      throw new Error(`Qwen completion falló (${res.status}): ${text.slice(0, 200)}`);  
+    }  
 
-    let thinking = '';
-    let answer = '';
-    const decoder = new TextDecoder();
-    let buffer = '';
+    let thinking = '';  
+    let answer = '';  
+    const decoder = new TextDecoder();  
+    let buffer = '';  
 
-    for await (const chunk of res.body) {
-      buffer += decoder.decode(chunk, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop();
+    for await (const chunk of res.body) {  
+      buffer += decoder.decode(chunk, { stream: true });  
+      const lines = buffer.split('\n');  
+      buffer = lines.pop();  
 
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const raw = line.slice(6).trim();
-        if (raw === '[DONE]') break;
+      for (const line of lines) {  
+        if (!line.startsWith('data: ')) continue;  
+        const raw = line.slice(6).trim();  
+        if (raw === '[DONE]') break;  
 
-        let parsed;
-        try {
-          parsed = JSON.parse(raw);
-        } catch {
-          continue;
-        }
+        let parsed;  
+        try {  
+          parsed = JSON.parse(raw);  
+        } catch {  
+          continue;  
+        }  
 
-        const delta = parsed?.choices?.[0]?.delta;
-        if (!delta) continue;
+        const delta = parsed?.choices?.[0]?.delta;  
+        if (!delta) continue;  
 
-        if (delta.phase === 'thinking_summary') {
-          const thought = delta.extra?.summary_thought?.content?.[0];
-          if (thought && thought.length > thinking.length) {
-            const newDelta = thought.slice(thinking.length);
-            thinking = thought;
-            if (onChunk) onChunk(newDelta, 'thinking');
-          }
-        } else if (delta.phase === 'answer' && delta.content) {
-          answer += delta.content;
-          if (onChunk) onChunk(delta.content, 'answer');
-        }
-      }
-    }
+        if (delta.phase === 'thinking_summary') {  
+          const thought = delta.extra?.summary_thought?.content?.[0];  
+          if (thought && thought.length > thinking.length) {  
+            const newDelta = thought.slice(thinking.length);  
+            thinking = thought;  
+            if (onChunk) onChunk(newDelta, 'thinking');  
+          }  
+        } else if (delta.phase === 'answer' && delta.content) {  
+          answer += delta.content;  
+          if (onChunk) onChunk(delta.content, 'answer');  
+        }  
+      }  
+    }  
 
     return { text: answer.trim(), thinking: thinking.trim() };
+
   } finally {
     if (signal) signal.removeEventListener('abort', onExternalAbort);
   }
 }
 
-async function qwen(prompt, options = {}) {
+async function qwen(chatKey, prompt, options = {}) {
   const MAX_RETRIES = 2;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const jar = await ensureAuth();
-      
-      if (!global.qwenGlobalChatId) {
-        global.qwenGlobalChatId = await createChat(jar, options.signal);
-      }
 
-      const result = await streamCompletion(global.qwenGlobalChatId, prompt, jar, null, options.signal);
+      if (!global.qwenGlobalChatIds[chatKey]) {  
+        global.qwenGlobalChatIds[chatKey] = await createChat(jar, options.signal);  
+      }  
 
-      return {
-        status: true,
-        text: result.text,
-        thinking: result.thinking,
-      };
-    } catch (err) {
-      if (err?.name === 'AbortError') throw err;
+      const result = await streamCompletion(global.qwenGlobalChatIds[chatKey], prompt, jar, null, options.signal);  
 
-      const isAuthError =
-        err.message?.includes('401') ||
-        err.message?.includes('403') ||
-        err.message?.includes('auth') ||
-        err.message?.includes('login');
+      return {  
+        status: true,  
+        text: result.text,  
+        thinking: result.thinking,  
+      };  
+    } catch (err) {  
+      if (err?.name === 'AbortError') throw err;  
 
-      if (isAuthError && attempt < MAX_RETRIES) {
-        cachedJar = null;
-        global.qwenGlobalChatId = null;
-        continue;
-      }
+      const isAuthError =  
+        err.message?.includes('401') ||  
+        err.message?.includes('403') ||  
+        err.message?.includes('auth') ||  
+        err.message?.includes('login');  
 
-      throw err;
+      if (isAuthError && attempt < MAX_RETRIES) {  
+        cachedJar = null;  
+        global.qwenGlobalChatIds[chatKey] = null;  
+        continue;  
+      }  
+
+      throw err;  
     }
   }
 }
 
 export default {
-  command: ['ia', 'chatgpt'],
+  command: ['ia', 'qwen', 'ai'],
   category: 'utils',
   description: 'Realizar peticiones a Qwen.',
   run: async ({ msg, sock, args, usedPrefix, command }) => {
     const text = args.join(' ').trim();
 
-    if (!text) {
-      return msg.reply(`《✧》 Escriba una *petición* para que *Qwen* le responda.`);
-    }
+    if (!text) {  
+      return msg.reply(`《✧》 Escriba una *petición* para que *Qwen* le responda.`);  
+    }  
 
-    const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
-    const settings = global.db.data.settings[botId];
-    const user = global.db.data.users[msg.sender];
-    const username = user?.name || 'usuario';
-    const botname = settings.botname || 'Bot';
+    const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';  
+    const settings = global.db.data.settings[botId];  
+    const user = global.db.data.users[msg.sender];  
+    const username = user?.name || 'usuario';  
+    const botname = settings.botname || 'Bot';  
 
-    if (!global.qwenHistory[msg.chat]) {
-      global.qwenHistory[msg.chat] = [];
-    }
+    if (!global.qwenHistory[msg.chat]) {  
+      global.qwenHistory[msg.chat] = [];  
+    }  
 
-    const history = global.qwenHistory[msg.chat];
-    history.push({ role: 'user', content: text });
+    const history = global.qwenHistory[msg.chat];  
+    history.push({ role: 'user', content: text });  
 
-    if (history.length > 15) {
-      history.shift();
-    }
+    if (history.length > 15) {  
+      history.shift();  
+    }  
 
-    const conversationContext = history
-      .map(m => `${m.role === 'user' ? username : botname}: ${m.content}`)
-      .join('\n\n');
+    const conversationContext = history  
+      .map(m => `${m.role === 'user' ? username : botname}: ${m.content}`)  
+      .join('\n\n');  
 
-    const fullPrompt = `Tu nombre es ${botname}, eres una IA amigable, divertida y útil. Hablas en español. Llamarás a la persona por su nombre: ${username}.\n\n[Historial de conversación]\n${conversationContext}`;
+    const fullPrompt = `Tu nombre es ${botname}, eres una IA amigable, divertida y útil. Hablas en español. Llamarás a la persona por su nombre: ${username}.\n\n[Historial de conversación]\n${conversationContext}`;  
 
-    try {
-      const { key } = await sock.sendMessage(
-        msg.chat,
-        { text: `ꕥ *Qwen* está procesando tu respuesta...` },
-        { quoted: msg }
-      );
+    try {  
+      const baileys = await import('baileys');  
 
-      await msg.react('🕒');
+      const msg2 = baileys.generateWAMessageFromContent(  
+        msg.chat,  
+        baileys.proto.Message.fromObject({  
+          interactiveMessage: {  
+            header: {  
+              title: ": ̗̀「𝐈𝐬𝐨𝐥𝐚𝐭𝐞𝐝𝐋𝐚𝐛𝐬」"  
+            },  
+            body: {  
+              text: "ꕥ Qwen está procesando tu respuesta..."  
+            },  
+            nativeFlowMessage: {  
+              buttons: [  
+                {  
+                  name: "inapp_signup",  
+                  buttonParamsJson: "https://github.com/IsolatedLabs"  
+                }  
+              ]  
+            }  
+          }  
+        }),  
+        {}  
+      );  
 
-      const result = await qwen(fullPrompt);
+      await sock.relayMessage(msg.chat, msg2.message, { messageId: msg2.key.id });  
+      const key = msg2.key;  
 
-      if (!result?.status || !result.text) {
-        history.pop();
-        return sock.reply(msg.chat, '《✧》 No se pudo obtener una *respuesta* válida', msg);
-      }
+      await msg.react('🕒');  
 
-      const clean = result.text.trim();
-      const codeMatch = clean.match(/```([a-zA-Z0-9_+-]*)\s*\n([\s\S]*?)```/);
+      const result = await qwen(msg.chat, fullPrompt);  
 
-      if (codeMatch) {
-        const langCode = codeMatch[1] || 'txt';
-        const justCode = codeMatch[2].trim();
-        const filename = `ꕥ respuesta.${langCode}`;
-        
-        await sock.sendCodeMessage(msg.chat, filename, justCode, msg, null, clean, key);
-        
-        history.push({ role: 'assistant', content: clean });
-        await msg.react('✔️');
-      } else {
-        history.push({ role: 'assistant', content: clean });
-        await sock.sendMessage(msg.chat, { text: clean, edit: key });
-        await msg.react('✔️');
-      }
-      
-    } catch (e) {
-      history.pop();
-      await msg.reply(
-        `> Ocurrió un error al ejecutar el comando *${usedPrefix + command}*.\n> [Error: *${e.message}*]`
-      );
+      if (!result?.status || !result.text) {  
+        history.pop();  
+        return sock.reply(msg.chat, '《✧》 No se pudo obtener una *respuesta* válida', msg);  
+      }  
+
+      const cleanResponse = result.text.trim();  
+
+      history.push({ role: 'assistant', content: cleanResponse });  
+      await sock.sendMessage(msg.chat, { text: cleanResponse, edit: key });  
+      await msg.react('✔️');  
+
+    } catch (e) {  
+      history.pop();  
+      await msg.reply(  
+        `> Ocurrió un error al ejecutar el comando *${usedPrefix + command}*.\n> [Error: *${e.message}*]`  
+      );  
     }
   },
 };
