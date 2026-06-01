@@ -16,334 +16,117 @@ const HEADERS = {
   'referer': `${BASE}/`,
 };
 
-if (!global.qwenHistory) {
-  global.qwenHistory = {};
-}
+if (!global.qwenHistory) global.qwenHistory = {};
+if (!global.qwenGlobalChatIds) global.qwenGlobalChatIds = {};
 
-if (!global.qwenGlobalChatIds) {
-  global.qwenGlobalChatIds = {};
-}
-
-function sha256(text) {
-  return createHash('sha256').update(text).digest('hex');
-}
+function sha256(text) { return createHash('sha256').update(text).digest('hex'); }
 
 function parseCookies(setCookieHeaders) {
   const jar = {};
   for (const header of setCookieHeaders || []) {
     const part = header.split(';')[0].trim();
     const eq = part.indexOf('=');
-    if (eq !== -1) {
-      jar[part.slice(0, eq).trim()] = part.slice(eq + 1).trim();
-    }
+    if (eq !== -1) jar[part.slice(0, eq).trim()] = part.slice(eq + 1).trim();
   }
   return jar;
 }
 
-function cookieString(jar) {
-  return Object.entries(jar)
-    .map(([k, v]) => `${k}=${v}`)
-    .join('; ');
-}
+function cookieString(jar) { return Object.entries(jar).map(([k, v]) => `${k}=${v}`).join('; '); }
 
 let cachedJar = null;
 
 async function signin() {
-  if (!QWEN_EMAIL || !QWEN_PASSWORD) {
-    throw new Error('Qwen no está configurado. Define QWEN_EMAIL y QWEN_PASSWORD.');
-  }
-
   const jar = {};
   const res = await globalThis.fetch(`${BASE}/api/v2/auths/signin`, {
     method: 'POST',
     headers: { ...HEADERS, cookie: cookieString(jar) },
-    body: JSON.stringify({
-      email: QWEN_EMAIL,
-      password: sha256(QWEN_PASSWORD),
-    }),
+    body: JSON.stringify({ email: QWEN_EMAIL, password: sha256(QWEN_PASSWORD) }),
   });
-
   const setCookies = res.headers.getSetCookie?.() ?? [];
   Object.assign(jar, parseCookies(setCookies));
-
-  let body = {};
-  try {
-    body = await res.json();
-  } catch {}
-
-  if (!res.ok || body?.success === false) {
-    throw new Error(`Qwen signin falló: ${JSON.stringify(body)}`);
-  }
-
   cachedJar = jar;
   return jar;
 }
 
-async function ensureAuth() {
-  if (cachedJar) return cachedJar;
-  return signin();
-}
+async function ensureAuth() { return cachedJar ? cachedJar : signin(); }
 
-async function createChat(jar, signal) {
+async function createChat(jar) {
   const res = await globalThis.fetch(`${BASE}/api/v2/chats/new`, {
     method: 'POST',
     headers: { ...HEADERS, cookie: cookieString(jar) },
-    body: JSON.stringify({
-      title: 'WhatsApp Bot Session',
-      models: [MODEL],
-      chat_mode: 'normal',
-      chat_type: 't2t',
-      timestamp: Date.now(),
-      project_id: '',
-    }),
-    signal,
+    body: JSON.stringify({ title: 'WhatsApp Bot Session', models: [MODEL], chat_mode: 'normal', chat_type: 't2t', timestamp: Date.now() }),
   });
-
   const body = await res.json();
-  if (!body?.data?.id) {
-    throw new Error(`Qwen createChat falló: ${JSON.stringify(body)}`);
-  }
-
-  return body.data.id;
+  return body?.data?.id;
 }
 
-async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
-  const fid = randomUUID();
-  const controller = new AbortController();
-  const onExternalAbort = () => controller.abort();
-
-  if (signal) {
-    if (signal.aborted) controller.abort();
-    else signal.addEventListener('abort', onExternalAbort, { once: true });
-  }
-
+async function streamCompletion(chatId, prompt, jar) {
   const payload = {
     stream: true,
-    version: '2.1',
-    incremental_output: true,
     chat_id: chatId,
-    chat_mode: 'normal',
     model: MODEL,
-    parent_id: null,
-    messages: [
-      {
-        fid,
-        parentId: null,
-        childrenIds: [],
-        role: 'user',
-        content: prompt,
-        user_action: 'chat',
-        files: [],
-        timestamp: Math.floor(Date.now() / 1000),
-        models: [MODEL],
-        chat_type: 't2t',
-        feature_config: {
-          thinking_enabled: true,
-          output_schema: 'phase',
-          research_mode: 'normal',
-          auto_thinking: false,
-          thinking_mode: 'Thinking',
-          thinking_format: 'summary',
-          auto_search: false,
-        },
-        extra: { meta: { subChatType: 't2t' } },
-        sub_chat_type: 't2t',
-        parent_id: null,
-      },
-    ],
-    timestamp: Math.floor(Date.now() / 1000),
+    messages: [{ role: 'user', content: prompt, timestamp: Math.floor(Date.now() / 1000), models: [MODEL] }],
   };
+  const res = await globalThis.fetch(`${BASE}/api/v2/chat/completions?chat_id=${chatId}`, {
+    method: 'POST',
+    headers: { ...HEADERS, accept: 'text/event-stream', cookie: cookieString(jar) },
+    body: JSON.stringify(payload),
+  });
 
-  try {
-    const res = await globalThis.fetch(`${BASE}/api/v2/chat/completions?chat_id=${chatId}`, {
-      method: 'POST',
-      headers: {
-        ...HEADERS,
-        accept: 'text/event-stream',
-        'x-accel-buffering': 'no',
-        cookie: cookieString(jar),
-        referer: `${BASE}/c/${chatId}`,
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-
-    if (!res.ok) {  
-      const text = await res.text();  
-      if (res.status === 401 || res.status === 403) {  
-        cachedJar = null;  
-        throw new Error(`Qwen auth expirado (${res.status}): ${text.slice(0, 200)}`);  
-      }  
-      throw new Error(`Qwen completion falló (${res.status}): ${text.slice(0, 200)}`);  
-    }  
-
-    let thinking = '';  
-    let answer = '';  
-    const decoder = new TextDecoder();  
-    let buffer = '';  
-
-    for await (const chunk of res.body) {  
-      buffer += decoder.decode(chunk, { stream: true });  
-      const lines = buffer.split('\n');  
-      buffer = lines.pop();  
-
-      for (const line of lines) {  
-        if (!line.startsWith('data: ')) continue;  
-        const raw = line.slice(6).trim();  
-        if (raw === '[DONE]') break;  
-
-        let parsed;  
-        try {  
-          parsed = JSON.parse(raw);  
-        } catch {  
-          continue;  
-        }  
-
-        const delta = parsed?.choices?.[0]?.delta;  
-        if (!delta) continue;  
-
-        if (delta.phase === 'thinking_summary') {  
-          const thought = delta.extra?.summary_thought?.content?.[0];  
-          if (thought && thought.length > thinking.length) {  
-            const newDelta = thought.slice(thinking.length);  
-            thinking = thought;  
-            if (onChunk) onChunk(newDelta, 'thinking');  
-          }  
-        } else if (delta.phase === 'answer' && delta.content) {  
-          answer += delta.content;  
-          if (onChunk) onChunk(delta.content, 'answer');  
-        }  
-      }  
-    }  
-
-    return { text: answer.trim(), thinking: thinking.trim() };
-
-  } finally {
-    if (signal) signal.removeEventListener('abort', onExternalAbort);
-  }
-}
-
-async function qwen(chatKey, prompt, options = {}) {
-  const MAX_RETRIES = 2;
-
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const jar = await ensureAuth();
-
-      if (!global.qwenGlobalChatIds[chatKey]) {  
-        global.qwenGlobalChatIds[chatKey] = await createChat(jar, options.signal);  
-      }  
-
-      const result = await streamCompletion(global.qwenGlobalChatIds[chatKey], prompt, jar, null, options.signal);  
-
-      return {  
-        status: true,  
-        text: result.text,  
-        thinking: result.thinking,  
-      };  
-    } catch (err) {  
-      if (err?.name === 'AbortError') throw err;  
-
-      const isAuthError =  
-        err.message?.includes('401') ||  
-        err.message?.includes('403') ||  
-        err.message?.includes('auth') ||  
-        err.message?.includes('login');  
-
-      if (isAuthError && attempt < MAX_RETRIES) {  
-        cachedJar = null;  
-        global.qwenGlobalChatIds[chatKey] = null;  
-        continue;  
-      }  
-
-      throw err;  
+  let answer = '';
+  const decoder = new TextDecoder();
+  for await (const chunk of res.body) {
+    const lines = decoder.decode(chunk, { stream: true }).split('\n');
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const raw = line.slice(6).trim();
+      if (raw === '[DONE]') break;
+      try {
+        const parsed = JSON.parse(raw);
+        const delta = parsed?.choices?.[0]?.delta;
+        if (delta?.phase === 'answer' && delta.content) answer += delta.content;
+      } catch {}
     }
   }
+  return answer.trim();
 }
 
 export default {
   command: ['ia', 'qwen', 'ai'],
   category: 'utils',
   description: 'Realizar peticiones a Qwen.',
-  run: async ({ msg, sock, args, usedPrefix, command }) => {
+  run: async ({ msg, sock, args }) => {
     const text = args.join(' ').trim();
+    if (!text) return msg.reply('《✧》 Escriba una petición.');
 
-    if (!text) {  
-      return msg.reply(`《✧》 Escriba una *petición* para que *Qwen* le responda.`);  
-    }  
+    const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+    const username = global.db.data.users[msg.sender]?.name || 'usuario';
+    const botname = global.db.data.settings[botId]?.botname || 'Bot';
 
-    const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';  
-    const settings = global.db.data.settings[botId];  
-    const user = global.db.data.users[msg.sender];  
-    const username = user?.name || 'usuario';  
-    const botname = settings.botname || 'Bot';  
+    if (!global.qwenHistory[msg.chat]) global.qwenHistory[msg.chat] = [];
+    const history = global.qwenHistory[msg.chat];
+    history.push({ role: 'user', content: text });
+    if (history.length > 15) history.shift();
 
-    if (!global.qwenHistory[msg.chat]) {  
-      global.qwenHistory[msg.chat] = [];  
-    }  
+    const fullPrompt = `${botname}, responde a ${username}: ${text}`;
 
-    const history = global.qwenHistory[msg.chat];  
-    history.push({ role: 'user', content: text });  
+    try {
+      const sentMsg = await sock.sendMessage(msg.chat, { text: 'ꕥ Qwen está procesando...' });
+      
+      const jar = await ensureAuth();
+      if (!global.qwenGlobalChatIds[msg.chat]) {
+        global.qwenGlobalChatIds[msg.chat] = await createChat(jar);
+      }
 
-    if (history.length > 15) {  
-      history.shift();  
-    }  
+      const response = await streamCompletion(global.qwenGlobalChatIds[msg.chat], fullPrompt, jar);
 
-    const conversationContext = history  
-      .map(m => `${m.role === 'user' ? username : botname}: ${m.content}`)  
-      .join('\n\n');  
+      if (!response) throw new Error('Respuesta vacía');
 
-    const fullPrompt = `Tu nombre es ${botname}, eres una IA amigable, divertida y útil. Hablas en español. Llamarás a la persona por su nombre: ${username}.\n\n[Historial de conversación]\n${conversationContext}`;  
-
-    try {  
-      const baileys = await import('baileys');  
-
-      const msg2 = baileys.generateWAMessageFromContent(  
-        msg.chat,  
-        baileys.proto.Message.fromObject({  
-          interactiveMessage: {  
-            header: {  
-              title: ": ̗̀「𝐈𝐬𝐨𝐥𝐚𝐭𝐞𝐝𝐋𝐚𝐛𝐬」"  
-            },  
-            body: {  
-              text: "ꕥ Qwen está procesando tu respuesta..."  
-            },  
-            nativeFlowMessage: {  
-              buttons: [  
-                {  
-                  name: "inapp_signup",  
-                  buttonParamsJson: "https://github.com/IsolatedLabs"  
-                }  
-              ]  
-            }  
-          }  
-        }),  
-        {}  
-      );  
-
-      await sock.relayMessage(msg.chat, msg2.message, { messageId: msg2.key.id });  
-      const key = msg2.key;  
-
-      await msg.react('🕒');  
-
-      const result = await qwen(msg.chat, fullPrompt);  
-
-      if (!result?.status || !result.text) {  
-        history.pop();  
-        return sock.reply(msg.chat, '《✧》 No se pudo obtener una *respuesta* válida', msg);  
-      }  
-
-      const cleanResponse = result.text.trim();  
-
-      history.push({ role: 'assistant', content: cleanResponse });  
-      await sock.sendMessage(msg.chat, { text: cleanResponse, edit: key });  
-      await msg.react('✔️');  
-
-    } catch (e) {  
-      history.pop();  
-      await msg.reply(  
-        `> Ocurrió un error al ejecutar el comando *${usedPrefix + command}*.\n> [Error: *${e.message}*]`  
-      );  
+      await sock.sendMessage(msg.chat, { text: response, edit: sentMsg.key });
+      history.push({ role: 'assistant', content: response });
+      await msg.react('✔️');
+    } catch (e) {
+      await msg.reply(`> Error: *${e.message}*`);
     }
   },
 };
