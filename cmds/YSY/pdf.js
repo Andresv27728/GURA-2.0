@@ -4,28 +4,65 @@ export default {
   run: async ({ msg, sock }) => {
     try {
       const axios = (await import('axios')).default
-      const Jimp = (await import('jimp')).default
 
-      async function resizeImage(buffer, width, height) {
+      // ================= THUMBNAIL MULTI-METODO =================
+      const IMG_URL = 'https://raw.githubusercontent.com/Andresv27728/dtbs/main/LOGOS/IMG_20260317_215244_926.jpg'
+
+      async function getThumbnail(url) {
+
+        // METODO 1: Jimp resize normal
         try {
-          const img = await Jimp.read(buffer)
-          try {
-            img.resize({ w: width, h: height })
-          } catch {
-            img.resize(width, height)
-          }
+          const Jimp = (await import('jimp')).default
+          const res = await axios.get(url, { responseType: 'arraybuffer' })
+          const img = await Jimp.read(Buffer.from(res.data))
+          img.resize(100, 100)
           if (typeof img.getBufferAsync === 'function') {
             return await img.getBufferAsync('image/jpeg')
           }
           return await img.getBuffer('image/jpeg')
-        } catch {
-          return buffer
-        }
+        } catch {}
+
+        // METODO 2: Jimp con cover
+        try {
+          const Jimp = (await import('jimp')).default
+          const res = await axios.get(url, { responseType: 'arraybuffer' })
+          const img = await Jimp.read(Buffer.from(res.data))
+          img.cover(80, 80)
+          return await img.getBufferAsync('image/jpeg')
+        } catch {}
+
+        // METODO 3: Sin resize, buffer crudo
+        try {
+          const res = await axios.get(url, { responseType: 'arraybuffer' })
+          return Buffer.from(res.data)
+        } catch {}
+
+        // METODO 4: Sharp si está disponible
+        try {
+          const sharp = (await import('sharp')).default
+          const res = await axios.get(url, { responseType: 'arraybuffer' })
+          return await sharp(Buffer.from(res.data))
+            .resize(100, 100)
+            .jpeg({ quality: 80 })
+            .toBuffer()
+        } catch {}
+
+        // METODO 5: Canvas si está disponible
+        try {
+          const { createCanvas, loadImage } = await import('canvas')
+          const res = await axios.get(url, { responseType: 'arraybuffer' })
+          const image = await loadImage(Buffer.from(res.data))
+          const canvas = createCanvas(100, 100)
+          const ctx = canvas.getContext('2d')
+          ctx.drawImage(image, 0, 0, 100, 100)
+          return canvas.toBuffer('image/jpeg')
+        } catch {}
+
+        // Si todo falla, retorna null
+        return null
       }
 
-      // ================= THUMBNAIL =================
-      const resArchivo = await axios.get('https://raw.githubusercontent.com/Andresv27728/dtbs/main/LOGOS/IMG_20260317_215244_926.jpg', { responseType: 'arraybuffer' })
-      const thumbResized = await resizeImage(Buffer.from(resArchivo.data), 300, 150)
+      const thumbResized = await getThumbnail(IMG_URL)
 
       // ================= VARIABLES =================
       const dcc = 'documento.pdf'; const mmt = 'application/pdf'
@@ -55,7 +92,7 @@ export default {
             fileEncSha256: Buffer.from('652f2ff6d8a8dae9f5c9654e386de5c01c623fe98d81a28f63dfb0979a44a22f', 'hex'),
             directPath: '/v/t62.7119-24/539012045_745537058346694_1512031191239726227_n.enc',
             mediaKeyTimestamp: { low: 1756370084, high: 0, unsigned: false },
-            jpegThumbnail: thumbResized || null,
+            jpegThumbnail: thumbResized || undefined,
             contextInfo: {
               mentionedJid: [msg.sender],
               groupMentions: [],
