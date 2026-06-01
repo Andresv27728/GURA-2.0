@@ -224,7 +224,7 @@ async function qwen(prompt, options = {}) {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const jar = await ensureAuth();
-
+      
       if (!global.qwenGlobalChatId) {
         global.qwenGlobalChatId = await createChat(jar, options.signal);
       }
@@ -257,7 +257,7 @@ async function qwen(prompt, options = {}) {
 }
 
 export default {
-  command: ['ia', 'qwen', 'ai'],
+  command: ['ia', 'chatgpt'],
   category: 'utils',
   description: 'Realizar peticiones a Qwen.',
   run: async ({ msg, sock, args, usedPrefix, command }) => {
@@ -291,33 +291,11 @@ export default {
     const fullPrompt = `Tu nombre es ${botname}, eres una IA amigable, divertida y útil. Hablas en español. Llamarás a la persona por su nombre: ${username}.\n\n[Historial de conversación]\n${conversationContext}`;
 
     try {
-      const baileys = await import('baileys');
-
-      const msg2 = baileys.generateWAMessageFromContent(
+      const { key } = await sock.sendMessage(
         msg.chat,
-        baileys.proto.Message.fromObject({
-          interactiveMessage: {
-            header: {
-              title: ": ̗̀「𝐈𝐬𝐨𝐥𝐚𝐭𝐞𝐝𝐋𝐚𝐛𝐬」"
-            },
-            body: {
-              text: "ꕥ Qwen está procesando tu respuesta..."
-            },
-            nativeFlowMessage: {
-              buttons: [
-                {
-                  name: "inapp_signup",
-                  buttonParamsJson: "https://github.com/IsolatedLabs"
-                }
-              ]
-            }
-          }
-        }),
-        {}
+        { text: `ꕥ *Qwen* está procesando tu respuesta...` },
+        { quoted: msg }
       );
-
-      await sock.relayMessage(msg.chat, msg2.message, { messageId: msg2.key.id });
-      const key = msg2.key;
 
       await msg.react('🕒');
 
@@ -329,21 +307,23 @@ export default {
       }
 
       const clean = result.text.trim();
-      
-      let formattedResponse = clean;
-      const codeRegex = /```([a-zA-Z0-9_+-]*)\s*\n([\s\S]*?)```/g;
+      const codeMatch = clean.match(/```([a-zA-Z0-9_+-]*)\s*\n([\s\S]*?)```/);
 
-      if (codeRegex.test(clean)) {
-        formattedResponse = clean.replace(codeRegex, (match, lang, code) => {
-          const languageLabel = lang ? `[Código: ${lang.toUpperCase()}]\n` : '';
-          return `${languageLabel}\`\`\`\n${code.trim()}\n\`\`\``;
-        });
+      if (codeMatch) {
+        const langCode = codeMatch[1] || 'txt';
+        const justCode = codeMatch[2].trim();
+        const filename = `ꕥ respuesta.${langCode}`;
+        
+        await sock.sendCodeMessage(msg.chat, filename, justCode, msg, null, clean, key);
+        
+        history.push({ role: 'assistant', content: clean });
+        await msg.react('✔️');
+      } else {
+        history.push({ role: 'assistant', content: clean });
+        await sock.sendMessage(msg.chat, { text: clean, edit: key });
+        await msg.react('✔️');
       }
-
-      history.push({ role: 'assistant', content: clean });
-      await sock.sendMessage(msg.chat, { text: formattedResponse, edit: key });
-      await msg.react('✔️');
-
+      
     } catch (e) {
       history.pop();
       await msg.reply(
