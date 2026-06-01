@@ -17,65 +17,8 @@ const HEADERS = {
   'referer': `${BASE}/`,
 };
 
-const langs = {
-  typescript: 'ts',
-  javascript: 'js',
-  python: 'py',
-  html: 'html',
-  css: 'css',
-  java: 'java',
-  cpp: 'cpp',
-  c: 'c',
-  json: 'json',
-  bash: 'sh',
-  sql: 'sql',
-  rust: 'rs',
-  go: 'go',
-  php: 'php',
-  ruby: 'rb',
-};
-
-function detectLanguage(query, response) {
-  const q = query.toLowerCase();
-  const r = response;
-
-  if (/typescript/i.test(q)) return 'typescript';
-  if (/\bpython\b/i.test(q)) return 'python';
-  if (/\bhtml\b/i.test(q)) return 'html';
-  if (/\bcss\b/i.test(q)) return 'css';
-  if (/\bjava\b(?!script)/i.test(q)) return 'java';
-  if (/\bc\+\+|cpp\b/i.test(q)) return 'cpp';
-  if (/\bjson\b/i.test(q)) return 'json';
-  if (/\bbash\b|\bshell\b/i.test(q)) return 'bash';
-  if (/\bsql\b/i.test(q)) return 'sql';
-  if (/\brust\b/i.test(q)) return 'rust';
-  if (/\bgolang\b|\bgo\b/i.test(q)) return 'go';
-  if (/\bphp\b/i.test(q)) return 'php';
-  if (/\bruby\b/i.test(q)) return 'ruby';
-  if (/javascript/i.test(q)) return 'javascript';
-
-  const asksCode = /(c[oó]digo|code|programa|script|funci[oó]n|clase|m[eé]todo|algoritmo|actualiza|edita|crea|implementa)/i.test(q);
-  if (!asksCode) return null;
-
-  if (/def |import \w+\n|print\s*\(|:\n\s{4}/i.test(r)) return 'python';
-  if (/<html|<div|<body|<span|<head/i.test(r)) return 'html';
-  if (/\{[\s\S]*color:|margin:|padding:|font-/i.test(r)) return 'css';
-  if (/public\s+class|System\.out\.print/i.test(r)) return 'java';
-  if (/#include\s*<|int main\s*\(/i.test(r)) return 'cpp';
-  if (/SELECT |INSERT |UPDATE |DELETE |CREATE TABLE/i.test(r)) return 'sql';
-  if (/fn main\(\)|let mut |println!\(/i.test(r)) return 'rust';
-  if (/func \w+\(|package main|fmt\.Print/i.test(r)) return 'go';
-  if (/<\?php|\$[a-z_]+\s*=/i.test(r)) return 'php';
-  if (/def initialize|\.each do |puts /i.test(r)) return 'ruby';
-  if (/\{["'][\w]+["']\s*:/i.test(r) && !/function|const|let|var/.test(r)) return 'json';
-
-  if (/function|class\s+\w|const |let |var |=>|\bimport\b|\bexport\b|console\.log/i.test(r)) {
-    return /:\s*(string|number|boolean|void|any)\b|interface\s+\w|<\w+>/i.test(r)
-      ? 'typescript'
-      : 'javascript';
-  }
-
-  return null;
+if (!global.qwenActiveChats) {
+  global.qwenActiveChats = {};
 }
 
 function sha256(text) {
@@ -108,7 +51,6 @@ async function signin() {
   }
 
   const jar = {};
-  // Usamos el fetch nativo global de Node.js
   const res = await globalThis.fetch(`${BASE}/api/v2/auths/signin`, {
     method: 'POST',
     headers: { ...HEADERS, cookie: cookieString(jar) },
@@ -118,7 +60,6 @@ async function signin() {
     }),
   });
 
-  // El fetch nativo expone correctamente getSetCookie()
   const setCookies = res.headers.getSetCookie?.() ?? [];
   Object.assign(jar, parseCookies(setCookies));
 
@@ -238,7 +179,6 @@ async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
     const decoder = new TextDecoder();
     let buffer = '';
 
-    // El cuerpo de fetch nativo maneja flujos legibles estándar perfectamente con TextDecoder
     for await (const chunk of res.body) {
       buffer += decoder.decode(chunk, { stream: true });
       const lines = buffer.split('\n');
@@ -279,13 +219,19 @@ async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
   }
 }
 
-async function qwen(prompt, onChunk = null, options = {}) {
+async function qwen(prompt, chatKey, onChunk = null, options = {}) {
   const MAX_RETRIES = 2;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const jar = await ensureAuth();
-      const chatId = await createChat(jar, options.signal);
+      
+      let chatId = global.qwenActiveChats[chatKey];
+      if (!chatId) {
+        chatId = await createChat(jar, options.signal);
+        global.qwenActiveChats[chatKey] = chatId;
+      }
+
       const result = await streamCompletion(chatId, prompt, jar, onChunk, options.signal);
 
       return {
@@ -304,6 +250,8 @@ async function qwen(prompt, onChunk = null, options = {}) {
 
       if (isAuthError && attempt < MAX_RETRIES) {
         cachedJar = null;
+        // Si hay error de autenticación, limpiamos la sesión de este chat para forzar una nueva
+        delete global.qwenActiveChats[chatKey];
         continue;
       }
 
@@ -340,40 +288,17 @@ export default {
 
       await msg.react('🕒');
 
-      const result = await qwen(`${basePrompt}\n\nUsuario: ${text}`);
+      const result = await qwen(`${basePrompt}\n\nUsuario: ${text}`, msg.chat);
 
       if (!result?.status || !result.text) {
         return sock.reply(msg.chat, '《✧》 No se pudo obtener una *respuesta* válida', msg);
       }
 
       const clean = result.text.trim();
-      const lang = detectLanguage(text, clean);
 
-      if (lang) {
-        const ext = langs[lang] ?? 'txt';
-        const filename = `ꕥ respuesta.${ext}`;
-
-        const tableData = {
-          title: '✎ Qwen',
-          headers: ['Campo', 'Valor'],
-          rows: [
-            ['Lenguaje', lang],
-            ['Líneas', String(clean.split('\n').length)],
-            ['Caracteres', String(clean.length)],
-          ],
-        };
-
-        await sock.sendMessage(msg.chat, {
-          text: `ꕥ *Qwen* · respuesta en *${lang}*`,
-          edit: key,
-        });
-
-        await sock.sendCodeMessage(msg.chat, filename, clean, msg, tableData);
-      } else {
-        await sock.sendMessage(msg.chat, { text: clean, edit: key });
-      }
-
+      await sock.sendMessage(msg.chat, { text: clean, edit: key });
       await msg.react('✔️');
+      
     } catch (e) {
       await msg.reply(
         `> Ocurrió un error al ejecutar el comando *${usedPrefix + command}*.\n> [Error: *${e.message}*]`
@@ -381,3 +306,4 @@ export default {
     }
   },
 };
+        
