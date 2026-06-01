@@ -47,9 +47,9 @@ export default {
         global.db.data.chats[msg.chat].users[msg.sender].coins = saldoFinal;
       } else {
         cantidad = Math.floor(Math.random() * (6000 - 4000 + 1)) + 4000;
-        const total = (user.coins || 0) + (user.bank || 0);
+        const total = saldoAnterior + (user.bank || 0);
         if (total >= cantidad) {
-          if (user.coins >= cantidad) {
+          if (saldoAnterior >= cantidad) {
             saldoFinal = saldoAnterior - cantidad;
             global.db.data.chats[msg.chat].users[msg.sender].coins = saldoFinal;
           } else {
