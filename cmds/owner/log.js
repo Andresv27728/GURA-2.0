@@ -15,7 +15,11 @@ export default {
       return msg.reply('《✧》 No hay logs registrados en la RAM todavía.');
     }
 
-    const cleanLogs = JSON.stringify(global.rawLogsRAM, null, 2);
+    const cleanLogs = Array.isArray(global.rawLogsRAM)
+  ? global.rawLogsRAM.join('\n')
+  : String(global.rawLogsRAM)
+      .replace(/,/g, '')
+      .replace(/\\n/g, '\n');
     const filePath = './tmp/logs.txt';
 
     await writeFile(filePath, cleanLogs);
