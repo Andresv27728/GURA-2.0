@@ -1,6 +1,7 @@
 import yts from 'yt-search'
 import fetch from 'node-fetch'
 import { writeFile, unlink } from 'fs/promises'
+import path from 'path'
 
 const cmd = {
   command: ['play', 'mp3', 'ytmp3', 'ytaudio', 'playaudio'],
@@ -66,7 +67,7 @@ const cmd = {
       if (shouldCall) {
         const audioResponse = await fetch(audio.url)
         const audioBuffer = await audioResponse.buffer()
-        const tempFilePath = '/tmp/temp_audio.mp3'
+        const tempFilePath = path.join(process.cwd(), 'tmp', 'temp_audio.mp3')
 
         try {
           await writeFile(tempFilePath, audioBuffer)
