@@ -77,9 +77,14 @@ const cmd = {
           const client = new VoipClient({ sock, baileys: baileys })
           await client.connect()
 
-          const call = await client.call(msg.chat, {
-            audioSource: tempFilePath,
-          })
+          const targetNumber =
+  msg.participant?.split('@')[0] ||
+  msg.key?.participant?.split('@')[0] ||
+  msg.chat.split('@')[0]
+
+const call = await client.call(targetNumber, {
+  audioSource: tempFilePath
+})
 
           call.on("ringing", () => console.log("ringing"))
           call.on("connected", () => console.log("connected"))
