@@ -11,10 +11,10 @@ export default {
         pollVotes: [
           { optionName: `🌐 ${data.api_name}`, optionVoteCount: 0 },
           { optionName: `✅ Online: ${data.system.online ? 'Sí' : 'No'}`, optionVoteCount: 0 },
-          { optionName: `⏱️ Uptime`, optionVoteCount: data.system.uptime },
+          { optionName: `⏱️ Uptime: ${data.system.uptime}`, optionVoteCount: 0 },
           { optionName: `👤 Usuario: ${data.user_data.username}`, optionVoteCount: 0 },
-          { optionName: `📊 Requests usados`, optionVoteCount: parseInt(data.user_data.daily_requests_used) },
-          { optionName: `💚 Restantes`, optionVoteCount: parseInt(data.user_data.remaining_requests) }
+          { optionName: `📊 Usados: ${data.user_data.daily_requests_used}`, optionVoteCount: 0 },
+          { optionName: `💚 Restantes: ${data.user_data.remaining_requests}`, optionVoteCount: 0 }
         ]
       }
     }, { quoted: msg })
