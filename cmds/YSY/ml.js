@@ -1,6 +1,6 @@
 export default {
   command: ['ml'],
-  category: 'bygp',
+  category: 'YSY',
   run: async ({ msg, sock }) => {
     try {
       const fs = await import('fs')
