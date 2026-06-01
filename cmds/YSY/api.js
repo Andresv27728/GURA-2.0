@@ -13,8 +13,8 @@ export default {
           { optionName: `✅ Online: ${data.system.online ? 'Sí' : 'No'}`, optionVoteCount: 0 },
           { optionName: `⏱️ Uptime`, optionVoteCount: data.system.uptime },
           { optionName: `👤 Usuario: ${data.user_data.username}`, optionVoteCount: 0 },
-          { optionName: `📊 Requests usados`, optionVoteCount: data.user_data.daily_requests_used },
-          { optionName: `💚 Restantes`, optionVoteCount: data.user_data.remaining_requests }
+          { optionName: `📊 Requests usados`, optionVoteCount: parseInt(data.user_data.daily_requests_used) },
+          { optionName: `💚 Restantes`, optionVoteCount: parseInt(data.user_data.remaining_requests) }
         ]
       }
     }, { quoted: msg })
