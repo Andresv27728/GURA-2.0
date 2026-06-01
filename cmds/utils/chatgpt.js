@@ -312,26 +312,10 @@ export default {
       if (codeMatch) {
         const langCode = codeMatch[1] || 'txt';
         const justCode = codeMatch[2].trim();
-        const justText = clean.replace(codeMatch[0], '').trim();
-
-        if (justText) {
-          await sock.sendMessage(msg.chat, { text: justText, edit: key });
-        } else {
-          await sock.sendMessage(msg.chat, { text: `ꕥ *Qwen* · Código generado`, edit: key });
-        }
-
-        const filename = `ꕥ codigo.${langCode || 'txt'}`;
-        const tableData = {
-          title: '✎ Qwen',
-          headers: ['Campo', 'Valor'],
-          rows: [
-            ['Lenguaje', langCode || 'desconocido'],
-            ['Líneas', String(justCode.split('\n').length)],
-            ['Caracteres', String(justCode.length)],
-          ],
-        };
-
-        await sock.sendCodeMessage(msg.chat, filename, justCode, msg, tableData);
+        const filename = `ꕥ respuesta.${langCode}`;
+        
+        await sock.sendCodeMessage(msg.chat, filename, justCode, msg, null, clean, key);
+        
         history.push({ role: 'assistant', content: clean });
         await msg.react('✔️');
       } else {
