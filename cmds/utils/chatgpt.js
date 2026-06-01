@@ -1,8 +1,8 @@
 import fetch from 'node-fetch';
 import { createHash, randomUUID } from 'crypto';
 
-const QWEN_EMAIL = process.env.QWEN_EMAIL;
-const QWEN_PASSWORD = process.env.QWEN_PASSWORD;
+const QWEN_EMAIL = "isolatedlabs.cn@gmail.com";
+const QWEN_PASSWORD = "IsolatedLabs-67";
 
 const BASE = 'https://chat.qwen.ai';
 const MODEL = 'qwen3.6-plus';
