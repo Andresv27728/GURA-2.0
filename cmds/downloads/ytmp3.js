@@ -1,7 +1,5 @@
 import yts from 'yt-search'
 import fetch from 'node-fetch'
-import { writeFile, unlink } from 'fs/promises'
-import path from 'path'
 
 const cmd = {
   command: ['play', 'mp3', 'ytmp3', 'ytaudio', 'playaudio'],
@@ -10,15 +8,11 @@ const cmd = {
 
   run: async ({ msg, sock, args, usedPrefix, command }) => {
     try {
-      const fullText = args.join(' ')
-      const shouldCall = /\|\s*(call|llamada)\s*$/i.test(fullText)
-      const cleanArgs = shouldCall ? fullText.replace(/\|\s*(call|llamada)\s*$/i, '').trim() : fullText
-
-      if (!cleanArgs) {
+      if (!args[0]) {
         return msg.reply('《✧》Por favor, menciona el nombre o URL del video que deseas descargar')
       }
 
-      const input_text = cleanArgs
+      const input_text = args.join(' ').trim()
       const video_id = getVideoId(input_text)
       const query = video_id ? `https://youtu.be/${video_id}` : input_text
 
@@ -37,11 +31,11 @@ const cmd = {
 
           const info_message = `➩ Descargando › ${title}
 
-> ❖ Canal › ${channel}
-ⴵ Duración › ${video_info.timestamp || 'Desconocido'}
-❀ Vistas › ${views}
-✩ Publicado › ${video_info.ago || 'Desconocido'}
-❒ Enlace › ${url}`
+> ❖ Canal › *${channel}*
+> ⴵ Duración › *${video_info.timestamp || 'Desconocido'}*
+> ❀ Vistas › *${views}*
+> ✩ Publicado › *${video_info.ago || 'Desconocido'}*
+> ❒ Enlace › *${url}*`
 
           if (video_info.image) {
             await sock.sendMessage(msg.chat, {
@@ -64,45 +58,11 @@ const cmd = {
         return msg.reply('《✧》No se pudo descargar el *audio*, intenta más tarde.')
       }
 
-      if (shouldCall) {
-        const audioResponse = await fetch(audio.url)
-        const audioBuffer = await audioResponse.buffer()
-        const tempFilePath = '../../tmp/temp_audio.mp3'
-        
-        try {
-          await writeFile(tempFilePath, audioBuffer)
-
-          const { VoipClient } = await import('baileys-caller')
-          const baileys = await import('baileys')
-          const client = new VoipClient({ sock, baileys: baileys })
-          await client.connect()
-
-          const targetNumber =
-  msg.participant?.split('@')[0] ||
-  msg.key?.participant?.split('@')[0] ||
-  msg.chat.split('@')[0]
-
-const call = await client.call(targetNumber, {
-  audioSource: tempFilePath
-})
-
-          call.on("ringing", () => console.log("ringing"))
-          call.on("connected", () => console.log("connected"))
-          call.on("audio", (pcm) => {})
-          call.on("ended", (reason) => console.log("ended:", reason))
-
-          await call.waitForEnd()
-          client.disconnect()
-        } finally {
-          await unlink(tempFilePath).catch(() => {})
-        }
-      } else {
-        await sock.sendMessage(msg.chat, {
-          audio: { url: audio.url },
-          fileName: audio.name || `${sanitizeFileName(title)}.mp3`,
-          mimetype: 'audio/mpeg'
-        }, { quoted: msg })
-      }
+      await sock.sendMessage(msg.chat, {
+        audio: { url: audio.url },
+        fileName: audio.name || `${sanitizeFileName(title)}.mp3`,
+        mimetype: 'audio/mpeg'
+      }, { quoted: msg })
 
     } catch (e) {
       await msg.reply(
@@ -118,117 +78,115 @@ const opik_api = 'https://dlp.opik.net/api/download'
 const opik_base = 'https://dlp.opik.net'
 
 const isYTUrl = (url = '') =>
-  /^(https?:\/\/)?(www\.|m\.)?(youtube\.com|youtu\.be)\/.+$/i.test(url)
+  /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/i.test(url)
 
 const getVideoId = (text = '') => {
-const match = text.match(
-/(?:youtu.be\/|youtube.com\/(?:watch?v=|embed\/|shorts\/|live\/|v\/))([a-zA-Z0-9_-]{11})/
-)
+  const match = text.match(
+    /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/|live\/|v\/))([a-zA-Z0-9_-]{11})/
+  )
 
-return match?.[1] || null
+  return match?.[1] || null
 }
 
 const sanitizeFileName = (name = 'audio') =>
-name
-.replace(/[\/:*?"<>|]/g, '')
-.replace(/\s+/g, ' ')
-.trim()
-.slice(0, 120) || 'audio'
+  name
+    .replace(/[\\/:*?"<>|]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120) || 'audio'
 
 async function fetchJson(url, options = {}) {
-const res = await fetch(url, options)
-const json = await res.json().catch(() => null)
+  const res = await fetch(url, options)
+  const json = await res.json().catch(() => null)
 
-if (!res.ok) {
-throw new Error(json?.message || json?.error || `HTTP ${res.status}`)
-}
+  if (!res.ok) {
+    throw new Error(json?.message || json?.error || `HTTP ${res.status}`)
+  }
 
-return json
+  return json
 }
 
 async function getVideoInfo(input, video_id) {
-if (video_id) {
-try {
-const info = await yts({ videoId: video_id })
+  if (video_id) {
+    try {
+      const info = await yts({ videoId: video_id })
 
-if (info?.videoId) {
-    return {
-      ...info,
-      url: `https://youtu.be/${info.videoId}`,
-      image: info.thumbnail || info.image
-    }
+      if (info?.videoId) {
+        return {
+          ...info,
+          url: `https://youtu.be/${info.videoId}`,
+          image: info.thumbnail || info.image
+        }
+      }
+    } catch {}
   }
-} catch {}
 
-}
+  const search = await yts(input)
+  const video = search.videos?.[0] || search.all?.find(v => v.type === 'video')
 
-const search = await yts(input)
-const video = search.videos?.[0] || search.all?.find(v => v.type === 'video')
-
-return video || null
+  return video || null
 }
 
 function buildDownloadUrls(download_url, file) {
-const urls = []
+  const urls = []
 
-for (const raw of [download_url, file?.absolute_url, file?.url]) {
-if (!raw) continue
+  for (const raw of [download_url, file?.absolute_url, file?.url]) {
+    if (!raw) continue
 
-const full_url = raw.startsWith('http')
-  ? raw
-  : new URL(raw, opik_base).href
+    const full_url = raw.startsWith('http')
+      ? raw
+      : new URL(raw, opik_base).href
 
-urls.push(full_url)
+    urls.push(full_url)
 
-if (full_url.startsWith('http://')) {
-  urls.push(full_url.replace('http://', 'https://'))
-}
+    if (full_url.startsWith('http://')) {
+      urls.push(full_url.replace('http://', 'https://'))
+    }
 
-if (full_url.startsWith('https://')) {
-  urls.push(full_url.replace('https://', 'http://'))
-}
+    if (full_url.startsWith('https://')) {
+      urls.push(full_url.replace('https://', 'http://'))
+    }
+  }
 
-}
-
-return [...new Set(urls)]
+  return [...new Set(urls)]
 }
 
 async function getAudioFromOpik(url) {
-const body = {
-args: `${url} -x --audio-format mp3 --embed-thumbnail`,
-label: ''
+  const body = {
+    args: `${url} -x --audio-format mp3 --embed-thumbnail`,
+    label: ''
+  }
+
+  const res = await fetchJson(opik_api, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  })
+
+  const file =
+    res?.generated_files?.[0] ||
+    res?.job?.generated_files?.[0] ||
+    null
+
+  const download_url =
+    res?.download_url ||
+    file?.absolute_url ||
+    file?.url ||
+    null
+
+  if (!download_url && !file?.url && !file?.absolute_url) return null
+
+  const urls = buildDownloadUrls(download_url, file)
+
+  return {
+    url: urls[0],
+    urls,
+    name: file?.name || null,
+    size: file?.size || null,
+    size_human: file?.size_human || null,
+    job_id: res?.job?.id || null,
+    status: res?.job?.status || null
+  }
 }
-
-const res = await fetchJson(opik_api, {
-method: 'POST',
-headers: {
-'Content-Type': 'application/json'
-},
-body: JSON.stringify(body)
-})
-
-const file =
-res?.generated_files?.[0] ||
-res?.job?.generated_files?.[0] ||
-null
-
-const download_url =
-res?.download_url ||
-file?.absolute_url ||
-file?.url ||
-null
-
-if (!download_url && !file?.url && !file?.absolute_url) return null
-
-const urls = buildDownloadUrls(download_url, file)
-
-return {
-url: urls[0],
-urls,
-name: file?.name || null,
-size: file?.size || null,
-size_human: file?.size_human || null,
-job_id: res?.job?.id || null,
-status: res?.job?.status || null
-}
-            }
