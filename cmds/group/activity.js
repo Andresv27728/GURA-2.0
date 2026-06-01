@@ -4,21 +4,42 @@ export default {
   run: async ({ msg, sock }) => {
     const id = msg.chat
 
-    // Obtener total de participantes del grupo
     const metadata = await sock.groupMetadata(id)
-    const total = metadata.participants.length
+    const participants = metadata.participants.map(p => p.id)
+    const total = participants.length
 
-    // Detectar activos con fallback por si chats no existe
-    const mensajes = sock.chats?.[id]?.messages 
-      ?? sock.store?.messages?.[id]?.array 
-      ?? sock.messageStore?.[id] 
-      ?? {}
+    // Tu bot SÍ tiene presenceSubscribe
+    try {
+      await sock.presenceSubscribe(id)
+    } catch (err) {
+      console.log('Error presenceSubscribe:', err.message)
+    }
 
-    const participantesActivos = Object.values(mensajes)
-      .map((item) => item.key?.participant)
-      .filter((v, i, self) => v && self.indexOf(v) === i)
+    const presencias = {}
 
-    const activos = participantesActivos.length
+    await new Promise((resolve) => {
+      const listener = (data) => {
+        const chatId = data.id
+        const updates = data.presences
+
+        if (chatId === id && updates) {
+          for (const [jid, info] of Object.entries(updates)) {
+            presencias[jid] = info.lastKnownPresence
+            console.log(`Usuario: ${jid} | Estado: ${info.lastKnownPresence}`)
+          }
+        }
+      }
+
+      sock.ev.on('presence.update', listener)
+
+      setTimeout(() => {
+        sock.ev.off('presence.update', listener)
+        console.log('Presencias finales:', presencias)
+        resolve()
+      }, 8000)
+    })
+
+    const activos = participants.filter(p => presencias[p] === 'available').length
     const inactivos = total - activos
 
     await sock.sendMessage(id, {
