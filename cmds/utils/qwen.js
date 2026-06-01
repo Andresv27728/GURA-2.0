@@ -138,7 +138,7 @@ async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
         models: [MODEL],
         chat_type: 't2t',
         feature_config: {
-          thinking_enabled: true,
+          thinking_enabled: false,
           output_schema: 'phase',
           research_mode: 'normal',
           auto_thinking: false,
