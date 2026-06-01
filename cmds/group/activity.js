@@ -6,8 +6,20 @@ export default {
     const participants = metadata.participants.map(p => p.id)
     const total = participants.length
 
-    // Suscribirse a presencias
-    await sock.groupSubscribePresences(msg.chat)
+    // Intentar suscribirse a presencias con los 3 métodos posibles
+    try {
+      if (typeof sock.groupSubscribePresences === 'function') {
+        await sock.groupSubscribePresences(msg.chat)
+      } else if (typeof sock.subscribePresences === 'function') {
+        await sock.subscribePresences(msg.chat)
+      } else if (typeof sock.presenceSubscribe === 'function') {
+        await sock.presenceSubscribe(msg.chat)
+      } else {
+        await sock.sendPresenceUpdate('available', msg.chat)
+      }
+    } catch (err) {
+      console.log('Presencia no soportada:', err.message)
+    }
 
     const presencias = {}
 
