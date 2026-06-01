@@ -5,7 +5,7 @@ const QWEN_EMAIL = "isolatedlabs.cn@gmail.com";
 const QWEN_PASSWORD = "IsolatedLabs-67";
 
 const BASE = 'https://chat.qwen.ai';
-const MODEL = 'qwen3.6-plus';
+const MODEL = 'qwen3.7-plus';
 
 const HEADERS = {
   'content-type': 'application/json',
