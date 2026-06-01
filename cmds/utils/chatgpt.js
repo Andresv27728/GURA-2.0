@@ -250,7 +250,6 @@ async function qwen(prompt, chatKey, onChunk = null, options = {}) {
 
       if (isAuthError && attempt < MAX_RETRIES) {
         cachedJar = null;
-        // Si hay error de autenticación, limpiamos la sesión de este chat para forzar una nueva
         delete global.qwenActiveChats[chatKey];
         continue;
       }
@@ -295,8 +294,29 @@ export default {
       }
 
       const clean = result.text.trim();
+      const hasCodeBlock = clean.includes('```');
 
-      await sock.sendMessage(msg.chat, { text: clean, edit: key });
+      if (hasCodeBlock) {
+        const filename = `ꕥ respuesta.txt`;
+        const tableData = {
+          title: '✎ Qwen Code',
+          headers: ['Campo', 'Valor'],
+          rows: [
+            ['Líneas', String(clean.split('\n').length)],
+            ['Caracteres', String(clean.length)],
+          ],
+        };
+
+        await sock.sendMessage(msg.chat, {
+          text: `ꕥ *Qwen* · Bloque de código detectado`,
+          edit: key,
+        });
+
+        await sock.sendCodeMessage(msg.chat, filename, clean, msg, tableData);
+      } else {
+        await sock.sendMessage(msg.chat, { text: clean, edit: key });
+      }
+
       await msg.react('✔️');
       
     } catch (e) {
@@ -306,4 +326,3 @@ export default {
     }
   },
 };
-        
