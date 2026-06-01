@@ -2,9 +2,8 @@ import { createHash, randomUUID } from 'crypto';
 
 const QWEN_EMAIL = "isolatedlabs.cn@gmail.com";
 const QWEN_PASSWORD = "IsolatedLabs-67";
-
 const BASE = 'https://chat.qwen.ai';
-const MODEL = 'qwen3.6-max-preview'; 
+const MODEL = 'qwen3.6-max-preview';
 
 const HEADERS = {
   'content-type': 'application/json',
@@ -307,14 +306,39 @@ export default {
         return sock.reply(msg.chat, '《✧》 No se pudo obtener una *respuesta* válida', msg);
       }
 
-      let clean = result.text.trim();
-      
-      clean = clean.replace(/```[a-zA-Z0-9_+-]+/g, '```');
+      const clean = result.text.trim();
+      const codeMatch = clean.match(/```([a-zA-Z0-9_+-]*)\s*\n([\s\S]*?)```/);
 
-      history.push({ role: 'assistant', content: clean });
+      if (codeMatch) {
+        const langCode = codeMatch[1] || 'txt';
+        const justCode = codeMatch[2].trim();
+        const justText = clean.replace(codeMatch[0], '').trim();
 
-      await sock.sendMessage(msg.chat, { text: clean, edit: key });
-      await msg.react('✔️');
+        if (justText) {
+          await sock.sendMessage(msg.chat, { text: justText, edit: key });
+        } else {
+          await sock.sendMessage(msg.chat, { text: `ꕥ *Qwen* · Código generado`, edit: key });
+        }
+
+        const filename = `ꕥ codigo.${langCode || 'txt'}`;
+        const tableData = {
+          title: '✎ Qwen',
+          headers: ['Campo', 'Valor'],
+          rows: [
+            ['Lenguaje', langCode || 'desconocido'],
+            ['Líneas', String(justCode.split('\n').length)],
+            ['Caracteres', String(justCode.length)],
+          ],
+        };
+
+        await sock.sendCodeMessage(msg.chat, filename, justCode, msg, tableData);
+        history.push({ role: 'assistant', content: clean });
+        await msg.react('✔️');
+      } else {
+        history.push({ role: 'assistant', content: clean });
+        await sock.sendMessage(msg.chat, { text: clean, edit: key });
+        await msg.react('✔️');
+      }
       
     } catch (e) {
       history.pop();
