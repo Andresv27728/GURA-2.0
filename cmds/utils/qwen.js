@@ -257,7 +257,7 @@ async function qwen(prompt, options = {}) {
 }
 
 export default {
-  command: ['ia', 'chatgpt'],
+  command: ['ia', 'qwen', 'ai'],
   category: 'utils',
   description: 'Realizar peticiones a Qwen.',
   run: async ({ msg, sock, args, usedPrefix, command }) => {
@@ -307,7 +307,7 @@ export default {
               buttons: [
                 {
                   name: "inapp_signup",
-                  buttonParamsJson: "https://yosoyyo-api-ofc.onrender.com"
+                  buttonParamsJson: "https://github.com/IsolatedLabs"
                 }
               ]
             }
@@ -329,22 +329,20 @@ export default {
       }
 
       const clean = result.text.trim();
-      const codeMatch = clean.match(/```([a-zA-Z0-9_+-]*)\s*\n([\s\S]*?)```/);
+      
+      let formattedResponse = clean;
+      const codeRegex = /```([a-zA-Z0-9_+-]*)\s*\n([\s\S]*?)```/g;
 
-      if (codeMatch) {
-        const langCode = codeMatch[1] || 'txt';
-        const justCode = codeMatch[2].trim();
-        const filename = `ꕥ respuesta.${langCode}`;
-
-        await sock.sendCodeMessage(msg.chat, filename, justCode, msg, null, clean, key);
-
-        history.push({ role: 'assistant', content: clean });
-        await msg.react('✔️');
-      } else {
-        history.push({ role: 'assistant', content: clean });
-        await sock.sendMessage(msg.chat, { text: clean, edit: key });
-        await msg.react('✔️');
+      if (codeRegex.test(clean)) {
+        formattedResponse = clean.replace(codeRegex, (match, lang, code) => {
+          const languageLabel = lang ? `[Código: ${lang.toUpperCase()}]\n` : '';
+          return `${languageLabel}\`\`\`\n${code.trim()}\n\`\`\``;
+        });
       }
+
+      history.push({ role: 'assistant', content: clean });
+      await sock.sendMessage(msg.chat, { text: formattedResponse, edit: key });
+      await msg.react('✔️');
 
     } catch (e) {
       history.pop();
