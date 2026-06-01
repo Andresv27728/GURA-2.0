@@ -11,21 +11,36 @@ export default async (sock, msg) => {
   if (msg.fromMe && !msg.key.participant && msg.isBot) return;  
   const sender = msg.sender;
   let body = msg.body || '';
-if (typeof global.rawLogsRAM !== 'string') {
+  if (typeof global.rawLogsRAM !== 'string') {
   global.rawLogsRAM = '';
+
   const ansiRegex = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
-  
+
   const hookStream = (stream) => {
     const oldWrite = stream.write;
+
     stream.write = function (chunk, encoding, callback) {
-      const str = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
-      global.rawLogsRAM += str.replace(ansiRegex, '');
+      let str = typeof chunk === 'string'
+        ? chunk
+        : chunk.toString('utf8');
+
+      str = str
+        .replace(ansiRegex, '')
+        .replace(/\r/g, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+
+      if (str) {
+        global.rawLogsRAM += str + '\n';
+      }
+
       return oldWrite.apply(stream, arguments);
     };
   };
+
   hookStream(process.stdout);
   hookStream(process.stderr);
-}
+  }
   initDB(msg, sock);
   
   const from = msg.key.remoteJid;
