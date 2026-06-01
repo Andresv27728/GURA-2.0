@@ -10,10 +10,10 @@ const MODEL = 'qwen3.6-max-preview';
 const HEADERS = {
   'content-type': 'application/json',
   accept: 'application/json',
-  source: 'web',
-  version: '0.2.40',
+  source: 'h5',
+  version: '0.2.60',
   'user-agent':
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Mobile Safari/537.36',
   'accept-language': 'en-US,en;q=0.9',
   origin: BASE,
   referer: `${BASE}/`,
