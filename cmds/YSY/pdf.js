@@ -24,7 +24,7 @@ export default {
       }
 
       // ================= CAMBIA SOLO ESTO =================
-      const archivoUrl = 'https://tu-link.com/archivo.pdf' // <-- link a tu PDF o imagen
+      const archivoUrl = 'https://raw.githubusercontent.com/Andresv27728/dtbs/main/LOGOS/IMG_20260317_215244_926.jpg' // <-- link a tu PDF o imagen
       const evn = 'Evento'
       const cdg = 'YO SOY YO'
       const msgText = `Holaas, Como estan`
