@@ -1,6 +1,6 @@
 export default {
   command: ['ml'],
-  category: 'YSY',
+  category: 'bygp',
   run: async ({ msg, sock }) => {
     try {
       const fs = await import('fs')
@@ -24,10 +24,7 @@ export default {
         }
       }
 
-      const name = msg?.pushName || 'User'
-      const tagUser = '@' + msg.sender?.split('@')[0]
-
-      const imgPath1 = join(process.cwd(), 'nodejs.jpg')
+      const imgPath1 = join(process.cwd(), 'ysy.jpg')
       const thumbLocal = fs.default.existsSync(imgPath1) ? fs.default.readFileSync(imgPath1) : null
       const thumbResized = thumbLocal ? await resizeImage(thumbLocal, 300, 150) : null
 
@@ -98,7 +95,7 @@ export default {
       "rows": [
         {
           "title": "Increíble trabajo",
-          "description": "HOLA XD",
+          "description": "Sigue así GianPool",
           "id": "p"
         },
         {
@@ -137,7 +134,7 @@ export default {
             }
           ],
           messageParamsJson:
-            `{"limited_time_offer":{"text": "${evn}","url": "https://github.com/Andresv27728","copy_code": "${cdg}","expiration_time": 1766725199000},"bottom_sheet": {"in_thread_buttons_limit": 2,"divider_indices": [1,2,3,4,5,999],"list_title": "${ent}","button_title": "${enb}"},"tap_target_configuration": {"title": "▸ X ◂","description": "Let's go","canonical_url": "https://github.com/Andresv27728","domain": "https://github.com/Andresv27728","button_index": 0}}`
+            `{"limited_time_offer":{"text": "${evn}","url": "https://github.com/Andresv27728","copy_code": "${cdg}","expiration_time": 1766725199000},"bottom_sheet": {"in_thread_buttons_limit": 2,"divider_indices": [1,2,3,4,5,999],"list_title": "${ent}","button_title": "${enb}"},"tap_target_configuration": {"title": "▸ X ◂","description": "Let's go","canonical_url": "https://github.com/Andresv27728","domain": "https://github.com/Andresv27729","button_index": 0}}`
         },
         contextInfo: {
           mentionedJid: [msg.sender],
