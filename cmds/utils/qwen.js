@@ -292,7 +292,8 @@ async function executeTool(toolName, args, { msg, sock }) {
           if (content.startsWith('http://') || content.startsWith('https://')) {
             message = { [type]: { url: content }, ...(caption && { caption }) };
           } else {
-            const filePath = resolve(content.startsWith('./') ? content : `./temp_agent/${content}`);            if (existsSync(filePath)) {
+            const filePath = resolve(content.startsWith('./') ? content : `./temp_agent/${content}`);            
+            if (existsSync(filePath)) {
               const fileBuffer = await readFile(filePath);
               message = { [type]: fileBuffer, ...(caption && { caption }) };
             } else {
@@ -341,7 +342,8 @@ async function executeTool(toolName, args, { msg, sock }) {
             if (msgContent.conversation) body = msgContent.conversation;
             else if (msgContent.extendedTextMessage?.text) body = msgContent.extendedTextMessage.text;
             else if (msgContent.imageMessage?.caption) body = `[Imagen] ${msgContent.imageMessage.caption}`;
-            else if (msgContent.videoMessage?.caption) body = `[Video] ${msgContent.videoMessage.caption}`;            else if (msgContent.documentMessage?.caption) body = `[Documento] ${msgContent.documentMessage.caption}`;
+            else if (msgContent.videoMessage?.caption) body = `[Video] ${msgContent.videoMessage.caption}`;            
+            else if (msgContent.documentMessage?.caption) body = `[Documento] ${msgContent.documentMessage.caption}`;
             else if (msgContent.audioMessage) body = '[Audio]';
             else if (msgContent.stickerMessage) body = '[Sticker]';
             else if (msgContent.contactMessage) body = '[Contacto]';
@@ -583,11 +585,10 @@ export default {
     const userHistoryKey = msg.sender;
     if (!global.qwenHistory[userHistoryKey]) global.qwenHistory[userHistoryKey] = [];  
     const history = global.qwenHistory[userHistoryKey];  
-    
+    // mensage
     const userChatKey = `${msg.chat}_${msg.sender}`;
-
+    
     history.push({ role: 'user', content: text });      if (history.length > 15) history.shift();  
-
     try {  
       const statusMsg = await sock.sendMessage(msg.chat, { text: "ꕥ *Qwen* está procesando tu respuesta como Agente." }, { quoted: msg });
       const statusKey = statusMsg.key;
