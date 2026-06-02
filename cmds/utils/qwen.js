@@ -372,7 +372,8 @@ async function executeTool(toolName, args, { msg, sock }) {
           'profilePictureUrl', 'fetchStatus', 'presenceSubscribe',
           'sendPresenceUpdate', 'readMessages', 'chatModify',
           'getChat', 'loadMessage', 'fetchGroupMetadata',
-          'contacts', 'getBusinessProfile', 'query'
+          'contacts', 'getBusinessProfile', 'query', 'blockUser', 'unblockUser',        
+          'updateBlockStatus', 'editMessage', 'deleteMessage', 
         ];
         
         const ADMIN_ONLY_METHODS = [
