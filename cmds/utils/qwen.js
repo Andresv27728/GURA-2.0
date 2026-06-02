@@ -770,9 +770,7 @@ export default {
           }
           
           toolUsageHistory.push(toolSignature);
-                    statusText += `\n- Acción: ${toolCall.tool}`;
-          await sock.sendMessage(msg.chat, { text: statusText, edit: statusKey });
-          
+
           const toolResult = await executeTool(toolCall.tool, toolCall.args, { msg, sock, statusKey });
           
           tempHistory.push({ role: 'assistant', content: `\`\`\`json\n${JSON.stringify(toolCall)}\n\`\`\`` });
