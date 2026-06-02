@@ -264,35 +264,55 @@ async function qwen(chatKey, prompt, options = {}) {
 function extractToolCall(text) {
   if (!text) return { toolCall: null, isToolResponse: false };
   
+  // Patrón 1: JSON en bloque de código markdown
   const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
   
   if (codeBlockMatch) {
     try {
-      const parsed = JSON.parse(codeBlockMatch[1]);
+      const parsed = JSON.parse(codeBlockMatch[1].trim());
       if (parsed.tool && typeof parsed.tool === 'string' && parsed.args) {
         return { toolCall: { tool: parsed.tool, args: parsed.args }, isToolResponse: true };
       }
     } catch (e) {
-      // Si falla el parseo, continuamos
+      // Continuar con otros patrones
     }
   }
   
-  const jsonMatch = text.match(/\{[\s\S]*?"tool"[\s\S]*?"args"[\s\S]*?\}/);
-  if (jsonMatch) {
+  // Patrón 2: Buscar cualquier objeto JSON válido que contenga "tool" y "args"
+  const jsonMatches = text.match(/\{[\s\S]*?"tool"[\s\S]*?"args"[\s\S]*?\}/g);
+  
+  if (jsonMatches) {
+    for (const jsonMatch of jsonMatches) {
+      try {
+        const parsed = JSON.parse(jsonMatch);
+        if (parsed.tool && typeof parsed.tool === 'string' && parsed.args) {
+          return { toolCall: { tool: parsed.tool, args: parsed.args }, isToolResponse: true };
+        }
+      } catch (e) {
+        // Intentar con el siguiente match
+        continue;
+      }
+    }  }
+  
+  // Patrón 3: Intentar extraer JSON del texto completo
+  const fullJsonMatch = text.match(/\{[\s\S]*\}/);
+  if (fullJsonMatch) {
     try {
-      const parsed = JSON.parse(jsonMatch[0]);
+      const parsed = JSON.parse(fullJsonMatch[0]);
       if (parsed.tool && typeof parsed.tool === 'string' && parsed.args) {
         return { toolCall: { tool: parsed.tool, args: parsed.args }, isToolResponse: true };
       }
     } catch (e) {
-      // Si falla el parseo, continuamos
+      // Continuar
     }
   }
   
+  // Si menciona tool y args pero no se pudo parsear, marcar como respuesta de herramienta inválida
   if (text.includes('"tool"') && text.includes('"args"')) {
     return { toolCall: null, isToolResponse: true };
   }
-    return { toolCall: null, isToolResponse: false };
+  
+  return { toolCall: null, isToolResponse: false };
 }
 
 async function executeTool(toolName, args, { msg, sock, statusKey = null }) {
@@ -321,8 +341,7 @@ async function executeTool(toolName, args, { msg, sock, statusKey = null }) {
         } else {
           return "Error: Tipo de mensaje no soportado.";
         }
-        
-        try {
+                try {
           await sock.sendMessage(jid, message, { quoted: msg });
           return "Mensaje enviado con éxito.";
         } catch (sendError) {
@@ -341,7 +360,8 @@ async function executeTool(toolName, args, { msg, sock, statusKey = null }) {
         let chatMessages;
         if (store.messages instanceof Map) {
           chatMessages = store.messages.get(jid);
-        } else if (store.messages[jid]) {          chatMessages = store.messages[jid];
+        } else if (store.messages[jid]) {
+          chatMessages = store.messages[jid];
         }
         
         if (!chatMessages) {
@@ -370,8 +390,7 @@ async function executeTool(toolName, args, { msg, sock, statusKey = null }) {
             else if (msgContent.stickerMessage) body = '[Sticker]';
             else if (msgContent.contactMessage) body = '[Contacto]';
             else if (msgContent.locationMessage) body = '[Ubicación]';
-          }
-          
+          }          
           return {
             id: m.key?.id,
             from: m.key?.participant || m.key?.remoteJid || 'desconocido',
@@ -390,7 +409,8 @@ async function executeTool(toolName, args, { msg, sock, statusKey = null }) {
         const ALLOWED_METHODS = [
           'groupMetadata', 'groupUpdateSubject', 'groupUpdateDescription',
           'groupParticipantsUpdate', 'groupSettingUpdate', 'groupInviteCode',
-          'groupRevokeInvite', 'groupGetInviteCode', 'groupLeave',          'profilePictureUrl', 'fetchStatus', 'presenceSubscribe',
+          'groupRevokeInvite', 'groupGetInviteCode', 'groupLeave',
+          'profilePictureUrl', 'fetchStatus', 'presenceSubscribe',
           'sendPresenceUpdate', 'readMessages', 'chatModify',
           'getChat', 'loadMessage', 'fetchGroupMetadata',
           'contacts', 'getBusinessProfile', 'query', 'blockUser', 'unblockUser',
@@ -419,8 +439,7 @@ async function executeTool(toolName, args, { msg, sock, statusKey = null }) {
             }
             const result = await sock.sendMessage(jid, {
               text: newText,
-              edit: messageKey
-            });
+              edit: messageKey            });
             return JSON.stringify({ success: true, message: "Mensaje editado con éxito", result }, null, 2);
           } catch (e) {
             return `Error al editar mensaje: ${e.message}`;
@@ -439,7 +458,8 @@ async function executeTool(toolName, args, { msg, sock, statusKey = null }) {
           } catch (e) {
             // Continuamos si falla la verificación de admin
           }
-        }        
+        }
+        
         try {
           const params = Array.isArray(parameters) ? parameters : [parameters];
           const result = await sock[method](...params);
@@ -468,8 +488,7 @@ async function executeTool(toolName, args, { msg, sock, statusKey = null }) {
         }
         
         if (!existsSync('./temp_agent')) {
-          await mkdir('./temp_agent', { recursive: true });
-        }
+          await mkdir('./temp_agent', { recursive: true });        }
         
         return new Promise((resolve) => {
           exec(command, { timeout: 60000, cwd: './temp_agent', maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
@@ -488,7 +507,8 @@ async function executeTool(toolName, args, { msg, sock, statusKey = null }) {
           if (data.AbstractText) result += `Resumen: ${data.AbstractText}\n`;
           if (data.RelatedTopics && data.RelatedTopics.length > 0) {
             result += "Temas relacionados:\n" + data.RelatedTopics.slice(0, 5).map(t => `- ${t.Text || t.Name}`).join('\n');
-          } else {            result += "No se encontraron resultados rápidos. Usa la herramienta web_request para buscar en internet si necesitas más detalles.";
+          } else {
+            result += "No se encontraron resultados rápidos. Usa la herramienta web_request para buscar en internet si necesitas más detalles.";
           }
           return result;
         } catch (e) {
@@ -517,8 +537,7 @@ async function executeTool(toolName, args, { msg, sock, statusKey = null }) {
         const msgKey = key || statusKey;
         if (!msgKey) return "Error: No hay mensaje para editar. Especifica 'key' o edita después de enviar un mensaje.";
         const jid = msgKey.remoteJid || msg.chat;
-        
-        try {
+                try {
           await sock.sendMessage(jid, { text, edit: msgKey });
           return "Mensaje editado con éxito.";
         } catch (e) {
@@ -537,7 +556,8 @@ async function executeTool(toolName, args, { msg, sock, statusKey = null }) {
       
       default:
         return "Herramienta desconocida.";
-    }  } catch (error) {
+    }
+  } catch (error) {
     return `Error al ejecutar la herramienta: ${error.message}`;
   }
 }
@@ -567,7 +587,6 @@ Ejemplo correcto:
    - Puedes crear CUALQUIER tipo de archivo sin restricciones
    - Puedes crear proyectos completos en cualquier lenguaje
    - Puedes generar archivos binarios, comprimidos, o cualquier formato
-
 6. TERMINAL - LIBERTAD TOTAL:
    - Puedes usar CUALQUIER comando de terminal
    - Puedes instalar dependencias, compilar código, ejecutar tests
@@ -586,7 +605,8 @@ Ejemplo correcto:
       args: {"method": "nombre_metodo", "parameters": [...]}
       
       MÉTODOS PRINCIPALES:
-      - groupMetadata(jid): Info COMPLETA del grupo (subject, desc, participants, etc.)      - groupUpdateSubject/Description: Cambia nombre y descripción
+      - groupMetadata(jid): Info COMPLETA del grupo (subject, desc, participants, etc.)
+      - groupUpdateSubject/Description: Cambia nombre y descripción
       - groupParticipantsUpdate: Agrega/elimina/promueve/degrada participantes
       - profilePictureUrl: Obtiene fotos de perfil
       - fetchStatus: Obtiene estado de contactos
@@ -615,7 +635,6 @@ Ejemplo correcto:
    - Si un método falla, intenta otro enfoque o explica al usuario por qué
 
 11. NO ALUCINES: NUNCA simules respuestas del sistema. NUNCA inventes herramientas. Si no puedes hacer algo después de varios intentos, explica por qué en texto normal.
-
 HERRAMIENTAS DISPONIBLES:
 
 1. send_message: Envía mensajes o archivos
@@ -635,6 +654,7 @@ HERRAMIENTAS DISPONIBLES:
 
 6. search_web: Busca información en internet
    args: {"query": "string"}
+
 7. web_request: Hace peticiones HTTP directas
    args: {"url": "string", "method": "GET|POST|PUT|DELETE", "headers": {}, "body": "string"}
 
@@ -664,12 +684,12 @@ export default {
     const history = global.qwenHistory[userHistoryKey];
     
     history.push({ role: 'user', content: text });
-    if (history.length > 15) history.shift();
-    
+    if (history.length > 15) history.shift();    
     const userChatKey = `${msg.chat}_${msg.sender}`;
     
     let statusMsg;
     let statusKey;
+    let actionLog = [];
     
     try {
       statusMsg = await sock.sendMessage(msg.chat, { text: "ꕥ *Qwen* está procesando tu respuesta como Agente." }, { quoted: msg });
@@ -685,6 +705,7 @@ export default {
       
       const toolUsageHistory = [];
       const MAX_REPEATED_ACTIONS = 5;
+
       while (true) {
         if (Date.now() - startTime > MAX_TIME_MS) {
           break;
@@ -706,6 +727,19 @@ export default {
         const { toolCall, isToolResponse } = extractToolCall(responseText);
 
         if (toolCall && ALLOWED_TOOLS.includes(toolCall.tool)) {
+          // Registrar acción
+          actionLog.push(toolCall.tool);
+          
+          // Actualizar mensaje de estado con las acciones
+          const actionText = actionLog.map(action => `- Acción: ${action}`).join('\n');
+          try {
+            await sock.sendMessage(msg.chat, {               text: `ꕥ *Qwen* está procesando tu respuesta como Agente.\n\n${actionText}`,
+              edit: statusKey 
+            });
+          } catch (editError) {
+            // Si falla la edición, continuar sin actualizar
+          }
+          
           const toolSignature = `${toolCall.tool}:${JSON.stringify(toolCall.args)}`;
           const recentUsages = toolUsageHistory.slice(-MAX_REPEATED_ACTIONS);
           const repeatCount = recentUsages.filter(u => u === toolSignature).length;
@@ -733,7 +767,8 @@ export default {
           tempHistory.push({ role: 'assistant', content: responseText });
           tempHistory.push({ 
             role: 'user', 
-            content: `[Sistema: Intentaste usar una herramienta pero el formato es inválido o no existe. Herramientas válidas: ${ALLOWED_TOOLS.join(', ')}.\n\nResponde en texto normal o genera un JSON válido.]`           });
+            content: `[Sistema: Intentaste usar una herramienta pero el formato es inválido o no existe. Herramientas válidas: ${ALLOWED_TOOLS.join(', ')}.\n\nResponde en texto normal o genera un JSON válido.]` 
+          });
           currentText = "Corrige tu respuesta.";
           
         } else {
@@ -747,8 +782,7 @@ export default {
           
           await msg.react('✔️');
           finalResponseSent = true;
-          break;
-        }
+          break;        }
       }
 
       if (!finalResponseSent) {
