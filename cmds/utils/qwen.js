@@ -3,7 +3,7 @@ import { exec } from 'child_process';
 import { mkdir, readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
-import { downloadAudio } from '../core/cerebro-AI/cerebro-download.js';
+import { downloadAudio } from '../../core/cerebro-AI/cerebro-download.js';
 
 const QWEN_EMAIL = "isolatedlabs.cn@gmail.com";
 const QWEN_PASSWORD = "IsolatedLabs-67";
