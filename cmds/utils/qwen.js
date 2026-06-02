@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'crypto';
 import { exec } from 'child_process';
-import { mkdir, readFile } from 'fs/promises';
+import { mkdir, readFile, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
+import yts from 'yt-search';
 
 const QWEN_EMAIL = "isolatedlabs.cn@gmail.com";
 const QWEN_PASSWORD = "IsolatedLabs-67";
@@ -278,7 +279,7 @@ function extractToolCall(text) {
   return { toolCall: null, isToolResponse: false };
 }
 
-async function executeTool(toolName, args, { msg, sock }) {
+async function executeTool(toolName, args, { msg, sock, statusKey = null }) {
   try {
     switch (toolName) {
       case 'send_message': {
@@ -485,12 +486,117 @@ async function executeTool(toolName, args, { msg, sock }) {
           return `Error en la petición: ${e.message}`;
         }
       }
+      case 'edit_message': {
+        const { text, key } = args;
+        if (!text) return "Error: Falta el texto para editar.";
+        const msgKey = key || statusKey;
+        if (!msgKey) return "Error: No hay mensaje para editar. Especifica 'key' o edita después de enviar un mensaje.";
+        const jid = msgKey.remoteJid || msg.chat;
+        try {
+          await sock.sendMessage(jid, { text, edit: msgKey });
+          return "Mensaje editado con éxito.";
+        } catch (e) {
+          return `Error al editar mensaje: ${e.message}`;
+        }
+      }
+      case 'download_audio': {
+        const { query } = args;
+        if (!query) return "Error: Falta el query (nombre o URL de YouTube).";
+        try {
+          const video_id = getVideoId(query);
+          const searchQuery = video_id ? `https://youtu.be/${video_id}` : query;
+          let title = 'audio';
+          if (isYTUrl(searchQuery) || video_id) {
+            const video_info = await getVideoInfo(searchQuery, video_id);
+            if (video_info) title = video_info.title || title;
+          }
+          const audio = await getAudioFromOpik(video_id ? `https://youtu.be/${video_id}` : query);
+          if (!audio?.url) return "No se pudo obtener el audio. Intenta con otro enlace o término.";
+          const ext = 'mp3';
+          const localName = `${sanitizeFileName(title)}.${ext}`;
+          const localPath = resolve(`./temp_agent/${localName}`);
+          if (!existsSync('./temp_agent')) await mkdir('./temp_agent', { recursive: true });
+          const res = await globalThis.fetch(audio.url);
+          if (!res.ok) throw new Error(`HTTP ${res.status} al descargar audio`);
+          const buf = Buffer.from(await res.arrayBuffer());
+          await writeFile(localPath, buf);
+          return JSON.stringify({
+            success: true,
+            title,
+            filePath: localPath,
+            fileName: localName,
+            size: audio.size_human || `${buf.length} bytes`,
+            message: `Audio descargado como ${localName}. Usa send_message con type:'audio' y content:'${localPath}' para enviarlo.`
+          }, null, 2);
+        } catch (e) {
+          return `Error al descargar audio: ${e.message}`;
+        }
+      }
       default:
         return "Herramienta desconocida.";
     }
   } catch (error) {
     return `Error al ejecutar la herramienta: ${error.message}`;
   }
+}
+
+/* --- Helpers para download_audio --- */
+const opik_api = 'https://dlp.opik.net/api/download';
+const opik_base = 'https://dlp.opik.net';
+
+function isYTUrl(url) {
+  return /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/i.test(url);
+}
+
+function getVideoId(text) {
+  const match = text.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/|live\/|v\/))([a-zA-Z0-9_-]{11})/);
+  return match?.[1] || null;
+}
+
+function sanitizeFileName(name) {
+  return name.replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim().slice(0, 120) || 'audio';
+}
+
+async function getVideoInfo(input, video_id) {
+  if (video_id) {
+    try {
+      const info = await yts({ videoId: video_id });
+      if (info?.videoId) return { ...info, url: `https://youtu.be/${info.videoId}`, image: info.thumbnail || info.image };
+    } catch {}
+  }
+  const search = await yts(input);
+  const video = search.videos?.[0] || search.all?.find(v => v.type === 'video');
+  return video || null;
+}
+
+function buildDownloadUrls(download_url, file) {
+  const urls = [];
+  for (const raw of [download_url, file?.absolute_url, file?.url]) {
+    if (!raw) continue;
+    const full_url = raw.startsWith('http') ? raw : new URL(raw, opik_base).href;
+    urls.push(full_url);
+    if (full_url.startsWith('http://')) urls.push(full_url.replace('http://', 'https://'));
+    if (full_url.startsWith('https://')) urls.push(full_url.replace('https://', 'http://'));
+  }
+  return [...new Set(urls)];
+}
+
+async function getAudioFromOpik(url) {
+  const body = { args: `${url} -x --audio-format mp3 --embed-thumbnail`, label: '' };
+  const res = await globalThis.fetch(opik_api, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error(`Opik API error: ${res.status}`);
+  const data = await res.json();
+  const file = data?.generated_files?.[0] || data?.job?.generated_files?.[0] || null;
+  const download_url = data?.download_url || file?.absolute_url || file?.url || null;
+  if (!download_url && !file?.url && !file?.absolute_url) return null;
+  const urls = buildDownloadUrls(download_url, file);
+  return {
+    url: urls[0], urls, name: file?.name || null,
+    size: file?.size || null, size_human: file?.size_human || null,
+    job_id: data?.job?.id || null, status: data?.job?.status || null
+  };
 }
 
 const systemPrompt = `Eres Hori-San, un agente IA avanzado basado en Qwen, desarrollado por Isolated Labs.
@@ -524,12 +630,15 @@ Ejemplo correcto:
    - Restricciones: NO uses wget/curl, NO uses comandos destructivos del sistema (rm -rf /, sudo), trabaja SIEMPRE en ./temp_agent
 
 7. CONTROL TOTAL DE WHATSAPP (BAILEYS):
-   Tienes control TOTAL sobre chats privados y grupos a través de tres herramientas:
+   Tienes control TOTAL sobre chats privados y grupos a través de cuatro herramientas:
 
    a) read_messages: Lee mensajes anteriores del historial del chat/grupo
       args: {"jid": "chat_jid (opcional)", "count": 30}
    
-   b) sock_execute: Ejecuta cualquier método de Baileys directamente
+   b) edit_message: Edita cualquier mensaje que el bot haya enviado
+      args: {"text": "nuevo texto"} — edita tu último mensaje de estado automáticamente
+   
+   c) sock_execute: Ejecuta cualquier método de Baileys directamente
       args: {"method": "nombre_metodo", "parameters": [...]}
       
       MÉTODOS PRINCIPALES:
@@ -542,7 +651,7 @@ Ejemplo correcto:
       - readMessages: Marca mensajes como leídos
       - groupInviteCode: Obtiene link de invitación
    
-   c) send_message: Envía mensajes o archivos
+   d) send_message: Envía mensajes o archivos
 
 8. MANEJO DE ERRORES:
    - Si una herramienta falla, LEE el error cuidadosamente
@@ -554,6 +663,7 @@ Ejemplo correcto:
 9. PARA DESCARGAR O BUSCAR EN INTERNET:
    - Usa SIEMPRE search_web para buscar información
    - Usa SIEMPRE web_request para hacer peticiones HTTP o descargar contenido
+   - Para descargar música MP3 de YouTube, usa download_audio seguido de send_message
 
 10. DECISIONES INTELIGENTES:
    - Piensa qué método es más útil para el usuario   - Para ver la descripción de un grupo: usa sock_execute con groupMetadata
@@ -567,20 +677,27 @@ HERRAMIENTAS DISPONIBLES:
 1. send_message: Envía mensajes o archivos
    args: {"type": "text|image|video|document|audio|sticker", "content": "url_o_ruta_local", "caption": "texto_opcional"}
 
-2. read_messages: Lee mensajes del historial del chat
+2. edit_message: Edita un mensaje que el bot haya enviado antes
+   args: {"text": "nuevo texto", "key": {"id": "...", "remoteJid": "...", "fromMe": true}} (key es opcional, si no se provee edita el último mensaje de estado)
+
+3. read_messages: Lee mensajes del historial del chat
    args: {"jid": "chat_jid_opcional", "count": 30}
 
-3. sock_execute: Ejecuta métodos de Baileys directamente
+4. sock_execute: Ejecuta métodos de Baileys directamente
    args: {"method": "nombre_metodo", "parameters": [...]}
 
-4. run_terminal: Ejecuta comandos de terminal
+5. run_terminal: Ejecuta comandos de terminal
    args: {"command": "string"}
 
-5. search_web: Busca información en internet
+6. search_web: Busca información en internet
    args: {"query": "string"}
 
-6. web_request: Hace peticiones HTTP directas
-   args: {"url": "string", "method": "GET|POST|PUT|DELETE", "headers": {}, "body": "string"}`;
+7. web_request: Hace peticiones HTTP directas
+   args: {"url": "string", "method": "GET|POST|PUT|DELETE", "headers": {}, "body": "string"}
+
+8. download_audio: Descarga audio MP3 de YouTube
+   args: {"query": "nombre_de_canción_o_URL_de_YouTube"}
+   IMPORTANTE: Después de descargar, DEBES usar send_message con type:'audio' y content:'ruta_del_archivo' para enviarlo al usuario.`;
 
 export default {
   command: ['ia', 'qwen', 'ai'],
@@ -614,7 +731,7 @@ export default {
       let tempHistory = [...history]; 
       let currentText = text;
       let finalResponseSent = false;
-      const ALLOWED_TOOLS = ['send_message', 'read_messages', 'sock_execute', 'run_terminal', 'search_web', 'web_request'];
+      const ALLOWED_TOOLS = ['send_message', 'edit_message', 'read_messages', 'sock_execute', 'run_terminal', 'search_web', 'web_request', 'download_audio'];
       
       const startTime = Date.now();
       const MAX_TIME_MS = 5 * 60 * 1000;
@@ -656,7 +773,7 @@ export default {
                     statusText += `\n- Acción: ${toolCall.tool}`;
           await sock.sendMessage(msg.chat, { text: statusText, edit: statusKey });
           
-          const toolResult = await executeTool(toolCall.tool, toolCall.args, { msg, sock });
+          const toolResult = await executeTool(toolCall.tool, toolCall.args, { msg, sock, statusKey });
           
           tempHistory.push({ role: 'assistant', content: `\`\`\`json\n${JSON.stringify(toolCall)}\n\`\`\`` });
           tempHistory.push({ role: 'user', content: `[Resultado de ${toolCall.tool}]:\n${toolResult}\n\nContinúa con el siguiente paso o responde al usuario.` });
