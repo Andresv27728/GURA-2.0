@@ -1,4 +1,7 @@
 import { createHash, randomUUID } from 'crypto';
+import { exec } from 'child_process';
+import { mkdir } from 'fs/promises';
+import { existsSync } from 'fs';
 
 const QWEN_EMAIL = "isolatedlabs.cn@gmail.com";
 const QWEN_PASSWORD = "IsolatedLabs-67";
@@ -45,9 +48,9 @@ async function signin() {
   if (!QWEN_EMAIL || !QWEN_PASSWORD) {
     throw new Error('Qwen no está configurado. Define QWEN_EMAIL y QWEN_PASSWORD.');
   }
-
   const jar = {};
-  const res = await globalThis.fetch(`${BASE}/api/v2/auths/signin`, {    method: 'POST',
+  const res = await globalThis.fetch(`${BASE}/api/v2/auths/signin`, {
+    method: 'POST',
     headers: { ...HEADERS, cookie: cookieString(jar) },
     body: JSON.stringify({
       email: QWEN_EMAIL,
@@ -93,9 +96,9 @@ async function createChat(jar, signal) {
   if (!body?.data?.id) {
     throw new Error(`Qwen createChat falló: ${JSON.stringify(body)}`);
   }
-
   return body.data.id;
 }
+
 async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
   const fid = randomUUID();
   const controller = new AbortController();
@@ -142,10 +145,10 @@ async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
     ],
     timestamp: Math.floor(Date.now() / 1000),
   };
-
   try {
     const res = await globalThis.fetch(`${BASE}/api/v2/chat/completions?chat_id=${chatId}`, {
-      method: 'POST',      headers: {
+      method: 'POST',
+      headers: {
         ...HEADERS,
         accept: 'text/event-stream',
         'x-accel-buffering': 'no',
@@ -191,10 +194,10 @@ async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
           if (thought && thought.length > thinking.length) {  
             const newDelta = thought.slice(thinking.length);  
             thinking = thought;  
-            if (onChunk) onChunk(newDelta, 'thinking');  
-          }  
+            if (onChunk) onChunk(newDelta, 'thinking');            }  
         } else if (delta.phase === 'answer' && delta.content) {  
-          answer += delta.content;            if (onChunk) onChunk(delta.content, 'answer');  
+          answer += delta.content;  
+          if (onChunk) onChunk(delta.content, 'answer');  
         }  
       }  
     }  
@@ -240,25 +243,21 @@ async function qwen(chatKey, prompt, options = {}) {
       }  
 
       throw err;  
-    }
-  }
+    }  }
 }
-// --- LÓGICA DEL AGENTE ---
 
 function parseToolCall(text) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-    if (jsonMatch) {
-      try { return JSON.parse(jsonMatch[1]); } catch {}
-    }
-    const braceMatch = text.match(/\{[\s\S]*\}/);
-    if (braceMatch) {
-      try { return JSON.parse(braceMatch[0]); } catch {}
-    }
-    return null;
+  if (!text) return null;
+  const match = text.match(/\{[\s\S]*\}/);
+  if (match) {
+    try {
+      const parsed = JSON.parse(match[0]);
+      if (parsed.tool || parsed.name) {
+        return { tool: parsed.tool || parsed.name, args: parsed.args || parsed.parameters || {} };
+      }
+    } catch (e) {}
   }
+  return null;
 }
 
 async function executeTool(toolName, args, { msg, sock }) {
@@ -285,32 +284,34 @@ async function executeTool(toolName, args, { msg, sock }) {
         
         if (action === 'set_name') await sock.groupUpdateSubject(jid, value);
         else if (action === 'set_description') await sock.groupUpdateDescription(jid, value);
+        else if (action === 'lock' || action === 'close') await sock.groupSettingUpdate(jid, 'locked');
+        else if (action === 'unlock' || action === 'open') await sock.groupSettingUpdate(jid, 'unlocked');
         else if (['add_participants', 'remove_participants', 'promote', 'demote'].includes(action)) {
           let participants = Array.isArray(value) ? value : [value];
           participants = participants.map(p => String(p).includes('@') ? String(p) : `${String(p)}@s.whatsapp.net`);
           const act = action.startsWith('add') ? 'add' : action.startsWith('remove') ? 'remove' : action;
           await sock.groupParticipantsUpdate(jid, participants, act);
         } else {
-          return "Error: Acción de grupo no reconocida.";
-        }        return "Acción de grupo ejecutada con éxito.";
+          return "Error: Acción de grupo no reconocida.";        }
+        return "Acción de grupo ejecutada con éxito.";
       }
       case 'run_terminal': {
         const { command } = args;
-        const ALLOWED_COMMANDS = ['ffmpeg', 'zip', 'unzip', 'pandoc', 'wkhtmltopdf', 'magick', 'convert', 'tar'];
+        const ALLOWED_COMMANDS = ['ffmpeg', 'zip', 'unzip', 'pandoc', 'wkhtmltopdf', 'magick', 'convert', 'tar', 'echo', 'cat', 'touch', 'mkdir', 'rm', 'mv', 'cp'];
         const baseCmd = command.split(' ')[0];
         if (!ALLOWED_COMMANDS.includes(baseCmd)) {
-          return "Error: Comando no permitido. Solo puedes usar ffmpeg, zip, unzip, pandoc, wkhtmltopdf, magick, convert o tar.";
+          return "Error: Comando no permitido. Solo puedes usar ffmpeg, zip, unzip, pandoc, wkhtmltopdf, magick, convert, tar, echo, cat, touch, mkdir, rm, mv o cp.";
         }
-        if (/[|;&<>`$]/.test(command)) {
-          return "Error: Caracteres no permitidos en el comando por seguridad (|, ;, &, <, >, `, $).";
+        if (/[|;&`$]/.test(command)) {
+          return "Error: Caracteres no permitidos en el comando por seguridad (|, ;, &, `, $).";
         }
         if (/https?:\/\//.test(command)) {
           return "Error: No puedes descargar archivos directamente desde la terminal. Usa la herramienta web_request.";
         }
         
-        const { exec } = await import('child_process');
-        const { mkdir } = await import('fs/promises');
-        await mkdir('./temp_agent', { recursive: true });
+        if (!existsSync('./temp_agent')) {
+          await mkdir('./temp_agent', { recursive: true });
+        }
         
         return new Promise((resolve) => {
           exec(command, { timeout: 30000, cwd: './temp_agent' }, (error, stdout, stderr) => {
@@ -340,8 +341,8 @@ async function executeTool(toolName, args, { msg, sock }) {
         const { url, method = 'GET', headers = {}, body } = args;
         try {
           const options = { method, headers };
-          if (body && method !== 'GET') options.body = body;
-                    const res = await globalThis.fetch(url, options);
+          if (body && method !== 'GET') options.body = body;          
+          const res = await globalThis.fetch(url, options);
           const text = await res.text();
           const truncated = text.length > 4000 ? text.substring(0, 4000) + "\n...[truncado]" : text;
           return truncated;
@@ -358,17 +359,17 @@ async function executeTool(toolName, args, { msg, sock }) {
 }
 
 const systemPrompt = `Eres Hori-San, un agente IA avanzado basado en Qwen, desarrollado por Isolated Labs. Tienes personalidad amable, inteligente y adaptable.
-Tienes acceso a herramientas para interactuar con el entorno. Si necesitas usar una herramienta, DEBES responder EXCLUSIVAMENTE con un objeto JSON válido, sin texto adicional ni bloques de código markdown, con este formato:
-{"tool": "nombre_de_la_herramienta", "args": {"parametro1": "valor1"}}
+Tienes acceso a herramientas para interactuar con el entorno.
 
-Si NO necesitas usar una herramienta, responde con texto normal directamente, sin formato JSON.
+REGLA CRÍTICA 1: Si necesitas usar una herramienta, tu respuesta COMPLETA debe ser ÚNICAMENTE el objeto JSON válido. NO escribas absolutamente nada más, ni una letra, ni un saludo, ni emojis, ni explicaciones, ni bloques de código markdown. Solo el JSON crudo.
+REGLA CRÍTICA 2: Si NO necesitas usar una herramienta, responde con texto normal directo al usuario. NO incluyas bloques JSON ni menciones a herramientas.
 
 Herramientas disponibles:
 1. send_message: Envía mensajes o archivos.
    args: {"type": "text|image|video|document|audio|sticker", "content": "url_o_texto", "caption": "texto_opcional"}
 2. manage_group: Gestiona el grupo.
-   args: {"action": "set_name|set_description|add_participants|remove_participants|promote|demote", "value": "string_o_array"}
-3. run_terminal: Ejecuta comandos seguros (solo ffmpeg, zip, unzip, pandoc, wkhtmltopdf, magick, convert, tar). NUNCA uses wget, curl, python, node, bash.
+   args: {"action": "set_name|set_description|add_participants|remove_participants|promote|demote|lock|unlock", "value": "string_o_array"}
+3. run_terminal: Ejecuta comandos seguros (ffmpeg, zip, unzip, pandoc, wkhtmltopdf, magick, convert, tar, echo, cat, touch, mkdir, rm, mv, cp). NUNCA uses wget, curl, python, node, bash. Para crear archivos usa echo o cat con redirección.
    args: {"command": "string"}
 4. search_web: Busca información en internet.
    args: {"query": "string"}
@@ -389,23 +390,36 @@ export default {
     const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';  
     const settings = global.db.data.settings[botId];  
     const user = global.db.data.users[msg.sender];  
-    const username = user?.name || 'usuario';  
-    const botname = settings.botname || 'Bot';  
-    if (!global.qwenHistory[msg.chat]) global.qwenHistory[msg.chat] = [];  
-    const history = global.qwenHistory[msg.chat];  
-    history.push({ role: 'user', content: text });  
+    const username = user?.name || 'usuario';      const botname = settings.botname || 'Bot';  
 
+    const userHistoryKey = msg.sender;
+    if (!global.qwenHistory[userHistoryKey]) global.qwenHistory[userHistoryKey] = [];  
+    const history = global.qwenHistory[userHistoryKey];  
+    
+    const userChatKey = `${msg.chat}_${msg.sender}`;
+
+    history.push({ role: 'user', content: text });  
     if (history.length > 15) history.shift();  
 
-    try {  
-      await msg.reply("ꕥ *Qwen* está procesando tu respuesta como Agente.");
-      await msg.react('🕒');  
+    let groupInfo = '';
+    if (msg.chat.endsWith('@g.us')) {
+      try {
+        const metadata = await sock.groupMetadata(msg.chat);
+        groupInfo = `\n[Información del Grupo: ${metadata.subject}, Total de Participantes: ${metadata.participants.length}]`;
+      } catch (e) {}
+    }
 
-      let tempHistory = [...history]; // Historial temporal para no ensuciar el principal con logs de herramientas
+    try {  
+      const statusMsg = await sock.sendMessage(msg.chat, { text: "ꕥ *Qwen* está procesando tu respuesta como Agente." }, { quoted: msg });
+      const statusKey = statusMsg.key;
+      let statusText = "ꕥ *Qwen* está procesando tu respuesta como Agente.";
+
+      let tempHistory = [...history]; 
       let currentText = text;
       let attempts = 0;
       const MAX_ATTEMPTS = 5;
       let finalResponseSent = false;
+      const ALLOWED_TOOLS = ['send_message', 'manage_group', 'run_terminal', 'search_web', 'web_request'];
 
       while (attempts < MAX_ATTEMPTS) {
         attempts++;
@@ -414,32 +428,47 @@ export default {
           .map(m => `${m.role === 'user' ? username : botname}: ${m.content}`)
           .join('\n\n');  
           
-        const fullPrompt = `${systemPrompt}\n\n[Historial de Conversación]\n${historyString}\n\n[Usuario]\n${currentText}`;  
+        const fullPrompt = `${systemPrompt}${groupInfo}\n\n[Historial de Conversación]\n${historyString}\n\n[Usuario]\n${currentText}`;  
 
-        const result = await qwen(msg.chat, fullPrompt);  
+        const result = await qwen(userChatKey, fullPrompt);  
 
         if (!result?.status || !result.text) break;  
 
         const responseText = result.text.trim();
         const toolCall = parseToolCall(responseText);
 
-        if (toolCall && toolCall.tool && toolCall.args) {
+        if (toolCall && ALLOWED_TOOLS.includes(toolCall.tool)) {
+          statusText += `\n- Acción: ${toolCall.tool}`;
+          await sock.sendMessage(msg.chat, { text: statusText, edit: statusKey });          
           const toolResult = await executeTool(toolCall.tool, toolCall.args, { msg, sock });
           
           tempHistory.push({ role: 'assistant', content: `[Ejecutando herramienta: ${toolCall.tool}]` });
           tempHistory.push({ role: 'user', content: `[Resultado de ${toolCall.tool}]:\n${toolResult}` });
           
-          currentText = `Procesa el resultado de la herramienta anterior y responde al usuario en texto normal, o llama a otra herramienta si es necesario.`;
+          currentText = "Procesa el resultado de la herramienta anterior y responde al usuario en texto normal, o llama a otra herramienta si es necesario.";
+        } else if (toolCall && !ALLOWED_TOOLS.includes(toolCall.tool)) {
+          tempHistory.push({ role: 'assistant', content: responseText });
+          tempHistory.push({ role: 'user', content: `[System: La herramienta "${toolCall.tool}" no existe. Por favor, usa solo las herramientas permitidas o responde en texto normal.]` });
+          currentText = "Corrige tu respuesta.";
         } else {
-          history.push({ role: 'assistant', content: responseText });  
-          await sock.sendMessage(msg.chat, { text: responseText }, { quoted: msg });  
-          await msg.react('✔️');
-          finalResponseSent = true;
-          break;
+          let finalText = responseText.replace(/```json[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '').replace(/\{[\s\S]*\}/g, '').trim();
+          
+          if (!finalText) {
+            tempHistory.push({ role: 'assistant', content: responseText });
+            tempHistory.push({ role: 'user', content: `[System: Tu respuesta JSON fue inválida o vacía. Por favor responde en texto normal o usa una herramienta válida.]` });
+            currentText = "Corrige tu respuesta.";
+          } else {
+            history.push({ role: 'assistant', content: finalText });  
+            await sock.sendMessage(msg.chat, { text: finalText, edit: statusKey });  
+            await msg.react('✔️');
+            finalResponseSent = true;
+            break;
+          }
         }
       }
 
-      if (!finalResponseSent) {        await sock.sendMessage(msg.chat, { text: "El agente alcanzó el límite de intentos o no pudo completar la tarea." }, { quoted: msg });
+      if (!finalResponseSent) {
+        await sock.sendMessage(msg.chat, { text: "El agente alcanzó el límite de intentos o no pudo completar la tarea.", edit: statusKey });
         await msg.react('❌');
       }
 
