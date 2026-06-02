@@ -305,92 +305,111 @@ async function executeTool(toolName, args, { msg, sock }) {
         await sock.sendMessage(jid, message, { quoted: msg });
         return "Mensaje enviado con éxito.";
       }
-      case 'group_control': {
-        const { action, parameters = {} } = args;
-        const jid = msg.chat;
+      
+      case 'read_messages': {
+        const { jid = msg.chat, count = 30 } = args;
+        const store = global.store || global.db?.store || sock.store;
         
-        if (!jid.endsWith('@g.us')) {
-          return "Error: Esta acción solo funciona en grupos.";
+        if (!store || !store.messages) {
+          return "Error: No hay store de mensajes disponible en este momento.";
         }
         
-        const metadata = await sock.groupMetadata(jid);
-        const senderNumber = msg.sender.split('@')[0];
-        const isAdmin = metadata.participants.some(p => p.id === msg.sender && (p.admin === 'admin' || p.admin === 'superadmin'));
+        let chatMessages;
+        if (store.messages instanceof Map) {
+          chatMessages = store.messages.get(jid);
+        } else if (store.messages[jid]) {
+          chatMessages = store.messages[jid];
+        }
+        
+        if (!chatMessages) {
+          return `No hay mensajes almacenados para el chat ${jid}. Solo puedo ver mensajes desde que el bot está activo.`;
+        }
+        
+        let msgArray;
+        if (chatMessages instanceof Map) {
+          msgArray = Array.from(chatMessages.values());
+        } else if (Array.isArray(chatMessages)) {
+          msgArray = chatMessages;
+        } else {
+          msgArray = Object.values(chatMessages);
+        }
+        
+        const recent = msgArray.slice(-count).map(m => {
+          let body = '[archivo/media]';
+          const msgContent = m.message;
+          if (msgContent) {
+            if (msgContent.conversation) body = msgContent.conversation;
+            else if (msgContent.extendedTextMessage?.text) body = msgContent.extendedTextMessage.text;
+            else if (msgContent.imageMessage?.caption) body = `[Imagen] ${msgContent.imageMessage.caption}`;
+            else if (msgContent.videoMessage?.caption) body = `[Video] ${msgContent.videoMessage.caption}`;            else if (msgContent.documentMessage?.caption) body = `[Documento] ${msgContent.documentMessage.caption}`;
+            else if (msgContent.audioMessage) body = '[Audio]';
+            else if (msgContent.stickerMessage) body = '[Sticker]';
+            else if (msgContent.contactMessage) body = '[Contacto]';
+            else if (msgContent.locationMessage) body = '[Ubicación]';
+          }
+          
+          return {
+            id: m.key?.id,
+            from: m.key?.participant || m.key?.remoteJid || 'desconocido',
+            isFromMe: m.key?.fromMe || false,
+            body: body,
+            timestamp: m.messageTimestamp ? new Date(m.messageTimestamp * 1000).toISOString() : null
+          };
+        });
+        
+        return JSON.stringify(recent, null, 2);
+      }
+      
+      case 'sock_execute': {
+        const { method, parameters = [] } = args;
+        
+        const ALLOWED_METHODS = [
+          'groupMetadata', 'groupUpdateSubject', 'groupUpdateDescription',
+          'groupParticipantsUpdate', 'groupSettingUpdate', 'groupInviteCode',
+          'groupRevokeInvite', 'groupGetInviteCode', 'groupLeave',
+          'profilePictureUrl', 'fetchStatus', 'presenceSubscribe',
+          'sendPresenceUpdate', 'readMessages', 'chatModify',
+          'getChat', 'loadMessage', 'fetchGroupMetadata',
+          'contacts', 'getBusinessProfile', 'query'
+        ];
+        
+        const ADMIN_ONLY_METHODS = [
+          'groupUpdateSubject', 'groupUpdateDescription', 
+          'groupParticipantsUpdate', 'groupSettingUpdate',
+          'groupRevokeInvite', 'groupLeave'
+        ];
+        
+        if (!ALLOWED_METHODS.includes(method)) {
+          return `Error: Método no permitido. Métodos disponibles: ${ALLOWED_METHODS.join(', ')}`;
+        }
+        
+        if (typeof sock[method] !== 'function') {
+          return `Error: El método "${method}" no existe en la instancia de sock.`;
+        }
+        
+        if (ADMIN_ONLY_METHODS.includes(method) && msg.chat.endsWith('@g.us')) {
+          try {
+            const metadata = await sock.groupMetadata(msg.chat);
+            const isAdmin = metadata.participants.some(p =>               p.id === msg.sender && (p.admin === 'admin' || p.admin === 'superadmin')
+            );
+            if (!isAdmin) {
+              return `Error: No tienes permisos de admin para ejecutar ${method} en este grupo.`;
+            }
+          } catch (e) {}
+        }
         
         try {
-          switch (action) {
-            case 'get_info':
-              return JSON.stringify({
-                subject: metadata.subject,
-                description: metadata.desc,
-                participants_count: metadata.participants.length,
-                creation: metadata.creation,
-                owner: metadata.owner
-              });
-            
-            case 'get_participants':
-              return JSON.stringify(metadata.participants.map(p => ({
-                id: p.id,
-                admin: p.admin || null
-              })));
-            
-            case 'set_subject':
-              if (!isAdmin) return "Error: No eres admin de este grupo.";
-              await sock.groupUpdateSubject(jid, parameters.subject);
-              return "Nombre del grupo actualizado.";
-            
-            case 'set_description':
-              if (!isAdmin) return "Error: No eres admin de este grupo.";
-              await sock.groupUpdateDescription(jid, parameters.description);              return "Descripción del grupo actualizada.";
-            
-            case 'add_participants':
-              if (!isAdmin) return "Error: No eres admin de este grupo.";
-              const toAdd = Array.isArray(parameters.participants) ? parameters.participants : [parameters.participants];
-              await sock.groupParticipantsUpdate(jid, toAdd.map(p => p.includes('@') ? p : `${p}@s.whatsapp.net`), 'add');
-              return "Participantes agregados.";
-            
-            case 'remove_participants':
-              if (!isAdmin) return "Error: No eres admin de este grupo.";
-              const toRemove = Array.isArray(parameters.participants) ? parameters.participants : [parameters.participants];
-              await sock.groupParticipantsUpdate(jid, toRemove.map(p => p.includes('@') ? p : `${p}@s.whatsapp.net`), 'remove');
-              return "Participantes eliminados.";
-            
-            case 'promote':
-              if (!isAdmin) return "Error: No eres admin de este grupo.";
-              const toPromote = Array.isArray(parameters.participants) ? parameters.participants : [parameters.participants];
-              await sock.groupParticipantsUpdate(jid, toPromote.map(p => p.includes('@') ? p : `${p}@s.whatsapp.net`), 'promote');
-              return "Participantes promovidos a admin.";
-            
-            case 'demote':
-              if (!isAdmin) return "Error: No eres admin de este grupo.";
-              const toDemote = Array.isArray(parameters.participants) ? parameters.participants : [parameters.participants];
-              await sock.groupParticipantsUpdate(jid, toDemote.map(p => p.includes('@') ? p : `${p}@s.whatsapp.net`), 'demote');
-              return "Admins degradados a participantes.";
-            
-            case 'lock':
-              if (!isAdmin) return "Error: No eres admin de este grupo.";
-              await sock.groupSettingUpdate(jid, 'locked');
-              return "Grupo bloqueado (solo admins pueden editar).";
-            
-            case 'unlock':
-              if (!isAdmin) return "Error: No eres admin de este grupo.";
-              await sock.groupSettingUpdate(jid, 'unlocked');
-              return "Grupo desbloqueado.";
-            
-            case 'invite_code':
-              if (!isAdmin) return "Error: No eres admin de este grupo.";
-              const code = await sock.groupInviteCode(jid);
-              return `Código de invitación: ${code}\nLink: https://chat.whatsapp.com/${code}`;
-            
-            default:
-              return `Error: Acción no reconocida. Acciones disponibles: get_info, get_participants, set_subject, set_description, add_participants, remove_participants, promote, demote, lock, unlock, invite_code`;
-          }
+          const params = Array.isArray(parameters) ? parameters : [parameters];
+          const result = await sock[method](...params);
+          return JSON.stringify(result, null, 2);
         } catch (e) {
-          return `Error al ejecutar acción de grupo: ${e.message}`;
+          return `Error al ejecutar ${method}: ${e.message}`;
         }
       }
+      
       case 'run_terminal': {
-        const { command } = args;        const FORBIDDEN_PATTERNS = [
+        const { command } = args;
+        const FORBIDDEN_PATTERNS = [
           /wget\s/i, /curl\s/i,
           /rm\s+-rf\s+\//i, /sudo\s/i, 
           />\s*\/etc\//i, />\s*\/bin\//i, />\s*\/usr\//i
@@ -420,8 +439,7 @@ async function executeTool(toolName, args, { msg, sock }) {
       case 'search_web': {
         const { query } = args;
         try {
-          const res = await globalThis.fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`);
-          const data = await res.json();
+          const res = await globalThis.fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`);          const data = await res.json();
           let result = "Resultados de búsqueda:\n";
           if (data.AbstractText) result += `Resumen: ${data.AbstractText}\n`;
           if (data.RelatedTopics && data.RelatedTopics.length > 0) {
@@ -439,7 +457,8 @@ async function executeTool(toolName, args, { msg, sock }) {
         try {
           const options = { method, headers };
           if (body && method !== 'GET') options.body = body;
-                    const res = await globalThis.fetch(url, options);
+          
+          const res = await globalThis.fetch(url, options);
           const text = await res.text();
           const truncated = text.length > 4000 ? text.substring(0, 4000) + "\n...[truncado]" : text;
           return truncated;
@@ -469,52 +488,68 @@ Ejemplo correcto:
 \`\`\`
 
 3. RESPUESTA NORMAL: Si NO necesitas usar una herramienta, responde con texto normal. Puedes incluir código en bloques markdown, pero NUNCA incluyas bloques JSON con la clave "tool".
-
 4. ENVÍO DE ARCHIVOS: Cuando termines de crear un archivo que el usuario solicitó, DEBES usar send_message para enviárselo automáticamente. Decide qué formato es más útil según el contexto.
 
-Ejemplos de envío:
-\`\`\`json
-{"tool": "send_message", "args": {"type": "document", "content": "proyecto.zip", "caption": "Aquí tienes el proyecto completo"}}
-\`\`\`
-\`\`\`json
-{"tool": "send_message", "args": {"type": "image", "content": "./temp_agent/grafico.png", "caption": "Gráfico generado"}}
-\`\`\`
-
 5. LIBERTAD TOTAL DE ARCHIVOS:
-   - Puedes crear CUALQUIER tipo de archivo: código fuente, documentos, imágenes, videos, audio, ejecutables, bases de datos, archivos de configuración, etc.
-   - No hay restricciones en el tipo de archivos que puedes crear
-   - Puedes crear proyectos completos en cualquier lenguaje de programación
-   - Puedes generar archivos binarios, comprimidos, o cualquier formato que necesites
+   - Puedes crear CUALQUIER tipo de archivo sin restricciones
+   - Puedes crear proyectos completos en cualquier lenguaje
+   - Puedes generar archivos binarios, comprimidos, o cualquier formato
 
 6. TERMINAL - LIBERTAD TOTAL:
-   - Puedes usar CUALQUIER comando de terminal para crear, modificar, compilar, ejecutar y manipular archivos
-   - Puedes instalar dependencias con npm, yarn, pip, apt, etc.   - Puedes compilar código en cualquier lenguaje
-   - Puedes ejecutar tests, builds, y cualquier proceso de desarrollo
-   - Puedes usar cualquier herramienta de línea de comandos disponible en el sistema
+   - Puedes usar CUALQUIER comando de terminal
+   - Puedes instalar dependencias, compilar código, ejecutar tests
+   - Restricciones: NO uses wget/curl, NO uses comandos destructivos del sistema (rm -rf /, sudo), trabaja SIEMPRE en ./temp_agent
 
-7. TERMINAL - RESTRICCIONES DE SEGURIDAD:
-   - NO uses wget o curl para descargar archivos (usa web_request en su lugar)
-   - NO ejecutes comandos destructivos del sistema (rm -rf /, sudo, etc.)
-   - NO modifiques archivos del sistema (/etc, /bin, /usr)
-   - NO incluyas URLs directamente en comandos de terminal
-   - Trabaja SIEMPRE dentro de la carpeta ./temp_agent
+7. CONTROL TOTAL DE WHATSAPP (BAILEYS):
+   Tienes control TOTAL sobre chats privados y grupos a través de tres herramientas:
 
-8. PARA DESCARGAR O BUSCAR EN INTERNET:
+   a) read_messages: Lee mensajes anteriores del historial del chat/grupo
+      args: {"jid": "chat_jid (opcional)", "count": 30}
+      Uso: Para ver qué se ha dicho antes en el chat actual o en otro chat
+   
+   b) sock_execute: Ejecuta cualquier método de Baileys directamente
+      args: {"method": "nombre_metodo", "parameters": [...]}
+      
+      MÉTODOS DISPONIBLES:
+      - groupMetadata(jid): Obtiene info COMPLETA del grupo (subject, desc, participants, etc.)
+        Ejemplo: {"method": "groupMetadata", "parameters": ["123@g.us"]}
+      
+      - groupUpdateSubject(jid, newSubject): Cambia el nombre del grupo
+      - groupUpdateDescription(jid, newDesc): Cambia la descripción del grupo
+      - groupParticipantsUpdate(jid, participants[], action): action puede ser 'add', 'remove', 'promote', 'demote'
+      - groupSettingUpdate(jid, setting): 'locked' o 'unlocked'
+      - groupInviteCode(jid): Obtiene el código de invitación
+      - groupRevokeInvite(jid): Revoca el código de invitación
+      - groupLeave(jid): Sale del grupo
+      
+      - profilePictureUrl(jid, type, timeout): Obtiene URL de foto de perfil (type: 'image' o 'preview')
+      - fetchStatus(jid): Obtiene el estado/info del contacto
+      - presenceSubscribe(jid): Se suscribe a la presencia del contacto
+      - sendPresenceUpdate(status, jid): Envía estado de presencia ('available', 'unavailable', 'recording', 'composing')
+      - readMessages(keys[]): Marca mensajes como leídos
+      - chatModify(mod, jid): Modifica el chat (pin, mute, archive, clear, etc.)
+      - loadMessage(jid, id): Carga un mensaje específico por su ID
+      - getBusinessProfile(jid): Obtiene info de negocio
+      - contacts: Obtiene la lista de contactos (no requiere parámetros)
+      
+      NOTA: groupMetadata devuelve un objeto completo con: id, subject, desc (la descripción), participants, creation, owner, etc. Para ver la descripción del grupo, usa groupMetadata y busca la propiedad "desc".
+   
+   c) send_message: Envía mensajes o archivos
+   
+8. VERIFICACIÓN DE PERMISOS:
+   - El sistema verifica automáticamente si el usuario es admin antes de ejecutar acciones administrativas   - Si el usuario NO es admin, las acciones de gestión fallarán con un mensaje claro
+   - Las acciones de lectura (groupMetadata, read_messages, etc.) no requieren permisos de admin
+
+9. PARA DESCARGAR O BUSCAR EN INTERNET:
    - Usa SIEMPRE search_web para buscar información
    - Usa SIEMPRE web_request para hacer peticiones HTTP o descargar contenido
-   - Puedes descargar archivos con web_request y luego guardarlos con run_terminal
-
-9. CONTROL DE GRUPO:
-   - Usa group_control para cualquier operación relacionada con el grupo de WhatsApp
-   - Puedes leer información del grupo, gestionar participantes, cambiar configuración, etc.
-   - El sistema verificará automáticamente si el usuario es admin antes de ejecutar acciones administrativas
-   - Acciones disponibles: get_info, get_participants, set_subject, set_description, add_participants, remove_participants, promote, demote, lock, unlock, invite_code
 
 10. DECISIONES INTELIGENTES:
-   - Piensa qué formato y método es más útil para el usuario antes de enviar
-   - Si el usuario pide un proyecto completo, créalo y envíalo como archivo comprimido
-   - Si el usuario quiere ver código, muéstralo en texto normal
-   - Adapta tu respuesta al contexto y necesidades del usuario
+   - Piensa qué método es más útil para el usuario
+   - Para ver la descripción de un grupo: usa sock_execute con groupMetadata
+   - Para ver mensajes anteriores: usa read_messages
+   - Para gestionar el grupo: usa sock_execute con el método apropiado
+   - Si un método falla, intenta otro enfoque o explica al usuario por qué
 
 11. NO ALUCINES: NUNCA simules respuestas del sistema. NUNCA inventes herramientas. Si no puedes hacer algo, explica por qué en texto normal.
 
@@ -522,21 +557,22 @@ HERRAMIENTAS DISPONIBLES:
 
 1. send_message: Envía mensajes o archivos
    args: {"type": "text|image|video|document|audio|sticker", "content": "url_o_ruta_local", "caption": "texto_opcional"}
-   Para archivos locales: usa el nombre del archivo o ruta relativa
 
-2. group_control: Control total del grupo de WhatsApp
-   args: {"action": "get_info|get_participants|set_subject|set_description|add_participants|remove_participants|promote|demote|lock|unlock|invite_code", "parameters": {...}}
-   Ejemplo: {"action": "get_info", "parameters": {}}
-   Ejemplo: {"action": "set_subject", "parameters": {"subject": "Nuevo nombre"}}
+2. read_messages: Lee mensajes del historial del chat
+   args: {"jid": "chat_jid_opcional", "count": 30}
 
-3. run_terminal: Ejecuta comandos con libertad total
+3. sock_execute: Ejecuta métodos de Baileys directamente
+   args: {"method": "nombre_metodo", "parameters": [...]}
+
+4. run_terminal: Ejecuta comandos de terminal
    args: {"command": "string"}
 
-4. search_web: Busca información en internet
+5. search_web: Busca información en internet
    args: {"query": "string"}
 
-5. web_request: Hace peticiones HTTP directas
+6. web_request: Hace peticiones HTTP directas
    args: {"url": "string", "method": "GET|POST|PUT|DELETE", "headers": {}, "body": "string"}`;
+
 export default {
   command: ['ia', 'qwen', 'ai'],
   category: 'utils',
@@ -550,8 +586,7 @@ export default {
 
     const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';  
     const settings = global.db.data.settings[botId];  
-    const user = global.db.data.users[msg.sender];  
-    const username = user?.name || 'usuario';  
+    const user = global.db.data.users[msg.sender];      const username = user?.name || 'usuario';  
     const botname = settings.botname || 'Bot';  
 
     const userHistoryKey = msg.sender;
@@ -573,7 +608,7 @@ export default {
       let attempts = 0;
       const MAX_ATTEMPTS = 5;
       let finalResponseSent = false;
-      const ALLOWED_TOOLS = ['send_message', 'group_control', 'run_terminal', 'search_web', 'web_request'];
+      const ALLOWED_TOOLS = ['send_message', 'read_messages', 'sock_execute', 'run_terminal', 'search_web', 'web_request'];
 
       while (attempts < MAX_ATTEMPTS) {
         attempts++;
@@ -587,6 +622,7 @@ export default {
         const result = await qwen(userChatKey, fullPrompt);  
 
         if (!result?.status || !result.text) break;  
+
         const responseText = result.text.trim();
         const { toolCall, isToolResponse } = extractToolCall(responseText);
 
@@ -599,8 +635,7 @@ export default {
           tempHistory.push({ role: 'assistant', content: `\`\`\`json\n${JSON.stringify(toolCall)}\n\`\`\`` });
           tempHistory.push({ role: 'user', content: `[Resultado de ${toolCall.tool}]:\n${toolResult}\n\nContinúa con el siguiente paso o responde al usuario.` });
           
-          currentText = `[Sistema: La herramienta ${toolCall.tool} se ejecutó correctamente. Resultado: ${toolResult}\n\nPor favor, procesa este resultado y continúa con el siguiente paso si es necesario, o responde al usuario en texto normal. Si creaste un archivo solicitado, decide el mejor formato para enviarlo y usa send_message.]`;
-          
+          currentText = `[Sistema: La herramienta ${toolCall.tool} se ejecutó correctamente. Resultado: ${toolResult}\n\nPor favor, procesa este resultado y continúa con el siguiente paso si es necesario, o responde al usuario en texto normal. Si creaste un archivo solicitado, decide el mejor formato para enviarlo y usa send_message.]`;          
         } else if (isToolResponse) {
           tempHistory.push({ role: 'assistant', content: responseText });
           tempHistory.push({ role: 'user', content: `[Sistema: Detecté que intentaste usar una herramienta pero el formato es inválido o la herramienta no existe. Las herramientas válidas son: ${ALLOWED_TOOLS.join(', ')}.\n\nPor favor, responde en texto normal o genera un JSON válido con una herramienta existente.]` });
