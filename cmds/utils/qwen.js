@@ -246,33 +246,35 @@ async function qwen(chatKey, prompt, options = {}) {
     }  }
 }
 
-function parseToolCall(text) {
-  if (!text) return null;
+function extractToolCall(text) {
+  if (!text) return { toolCall: null, isToolResponse: false };
   
-  const codeBlockStart = text.indexOf('```json');
-  const codeBlockEnd = text.lastIndexOf('```');
+  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
   
-  if (codeBlockStart === -1 || codeBlockEnd === -1 || codeBlockStart >= codeBlockEnd) {
-    return null;
+  if (codeBlockMatch) {
+    try {
+      const parsed = JSON.parse(codeBlockMatch[1]);
+      if (parsed.tool && typeof parsed.tool === 'string' && parsed.args) {
+        return { toolCall: { tool: parsed.tool, args: parsed.args }, isToolResponse: true };
+      }
+    } catch (e) {}
   }
   
-  const before = text.substring(0, codeBlockStart).trim();
-  const after = text.substring(codeBlockEnd + 3).trim();
-  
-  if (before.length > 30 || after.length > 30) {
-    return null;
+  const jsonMatch = text.match(/\{[\s\S]*?"tool"[\s\S]*?\}/);
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed.tool && typeof parsed.tool === 'string' && parsed.args) {
+        return { toolCall: { tool: parsed.tool, args: parsed.args }, isToolResponse: true };
+      }
+    } catch (e) {}
   }
   
-  const jsonContent = text.substring(codeBlockStart + 7, codeBlockEnd).trim();
+  if (text.includes('"tool"') && text.includes('"args"')) {
+    return { toolCall: null, isToolResponse: true };
+  }
   
-  try {
-    const parsed = JSON.parse(jsonContent);
-    if (parsed.tool && typeof parsed.tool === 'string' && parsed.args && typeof parsed.args === 'object') {
-      return { tool: parsed.tool, args: parsed.args };
-    }
-  } catch (e) {}
-  
-  return null;
+  return { toolCall: null, isToolResponse: false };
 }
 
 async function executeTool(toolName, args, { msg, sock }) {
@@ -290,9 +292,9 @@ async function executeTool(toolName, args, { msg, sock }) {
           return "Error: Tipo de mensaje no soportado.";
         }
         await sock.sendMessage(jid, message, { quoted: msg });
-        return "Mensaje enviado con éxito.";
-      }
-      case 'manage_group': {        const { action, value } = args;
+        return "Mensaje enviado con éxito.";      }
+      case 'manage_group': {
+        const { action, value } = args;
         const jid = msg.chat;
         if (!jid.endsWith('@g.us')) return "Error: Esta acción solo funciona en grupos.";
         
@@ -339,9 +341,9 @@ async function executeTool(toolName, args, { msg, sock }) {
         const { query } = args;
         try {
           const res = await globalThis.fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`);
-          const data = await res.json();
-          let result = "Resultados de búsqueda:\n";
-          if (data.AbstractText) result += `Resumen: ${data.AbstractText}\n`;          if (data.RelatedTopics && data.RelatedTopics.length > 0) {
+          const data = await res.json();          let result = "Resultados de búsqueda:\n";
+          if (data.AbstractText) result += `Resumen: ${data.AbstractText}\n`;
+          if (data.RelatedTopics && data.RelatedTopics.length > 0) {
             result += "Temas relacionados:\n" + data.RelatedTopics.slice(0, 5).map(t => `- ${t.Text || t.Name}`).join('\n');
           } else {
              result += "No se encontraron resultados rápidos. Usa la herramienta web_request para buscar en internet si necesitas más detalles.";
@@ -373,29 +375,43 @@ async function executeTool(toolName, args, { msg, sock }) {
   }
 }
 
-const systemPrompt = `Eres Hori-San, un agente IA avanzado basado en Qwen, desarrollado por Isolated Labs. Tienes personalidad amable, inteligente y adaptable.
-Tienes acceso a herramientas para interactuar con el entorno.
+const systemPrompt = `Eres Hori-San, un agente IA avanzado basado en Qwen, desarrollado por Isolated Labs.
 
-REGLA CRÍTICA 1: Si necesitas usar una herramienta, tu respuesta COMPLETA debe ser ÚNICAMENTE un bloque de código markdown con el JSON válido. NO escribas absolutamente NADA antes ni después del bloque de código. Sin saludos, sin explicaciones, sin texto introductorio, sin emojis, sin despedidas. SOLO el bloque de código.
+REGLAS CRÍTICAS DE COMPORTAMIENTO:
 
-Ejemplo correcto de uso de herramienta:
+1. PACIENCIA: Ejecuta UNA SOLA acción a la vez. Si necesitas hacer múltiples pasos, ejecuta el primero, ESPERA el resultado, y luego continúa con el siguiente paso.
+
+2. USO DE HERRAMIENTAS: Si necesitas usar una herramienta, tu respuesta COMPLETA debe ser ÚNICAMENTE un bloque JSON en formato markdown. NO escribas texto antes ni después del JSON.
+
+Ejemplo correcto:
 \`\`\`json
-{"tool": "nombre_de_la_herramienta", "args": {"parametro1": "valor1"}}
+{"tool": "run_terminal", "args": {"command": "echo 'hola' > archivo.txt"}}
 \`\`\`
 
-REGLA CRÍTICA 2: Si NO necesitas usar una herramienta, responde con texto normal directo al usuario. Puedes incluir código en bloques markdown, pero NO incluyas bloques JSON con la clave "tool" en tu respuesta normal.
+3. RESPUESTA NORMAL: Si NO necesitas usar una herramienta, responde con texto normal. Puedes incluir código en bloques markdown, pero NUNCA incluyas bloques JSON con la clave "tool".
 
-REGLA CRÍTICA 3: NUNCA inventes herramientas que no estén en la lista. NUNCA simules respuestas del sistema o errores de herramientas.
+4. NO ALUCINES: NUNCA simules respuestas del sistema como "Tool X does not exists". NUNCA inventes herramientas. Si no puedes hacer algo, explica por qué en texto normal.
+5. PROHIBICIONES:
+   - NO descargues archivos con wget/curl desde la terminal
+   - NO uses python, node, bash en la terminal
+   - NO ejecutes comandos peligrosos (rm -rf, etc.)
 
-Herramientas disponibles:
-1. send_message: Envía mensajes o archivos.
+HERRAMIENTAS DISPONIBLES:
+1. send_message: Envía mensajes o archivos
    args: {"type": "text|image|video|document|audio|sticker", "content": "url_o_texto", "caption": "texto_opcional"}
-2. manage_group: Gestiona el grupo.   args: {"action": "set_name|set_description|add_participants|remove_participants|promote|demote|lock|unlock", "value": "string_o_array"}
-3. run_terminal: Ejecuta comandos seguros (ffmpeg, zip, unzip, pandoc, wkhtmltopdf, magick, convert, tar, echo, cat, touch, mkdir, rm, mv, cp). NUNCA uses wget, curl, python, node, bash. Para crear archivos usa: echo "contenido" > archivo.txt
+
+2. manage_group: Gestiona el grupo
+   args: {"action": "set_name|set_description|add_participants|remove_participants|promote|demote|lock|unlock", "value": "string_o_array"}
+
+3. run_terminal: Ejecuta comandos seguros
+   Comandos permitidos: ffmpeg, zip, unzip, pandoc, wkhtmltopdf, magick, convert, tar, echo, cat, touch, mkdir, rm, mv, cp
+   Para crear archivos: echo "contenido" > archivo.txt
    args: {"command": "string"}
-4. search_web: Busca información en internet.
+
+4. search_web: Busca información en internet
    args: {"query": "string"}
-5. web_request: Hace peticiones HTTP directas.
+
+5. web_request: Hace peticiones HTTP directas
    args: {"url": "string", "method": "GET|POST|PUT|DELETE", "headers": {}, "body": "string"}`;
 
 export default {
@@ -423,7 +439,6 @@ export default {
 
     history.push({ role: 'user', content: text });  
     if (history.length > 15) history.shift();  
-
     let groupInfo = '';
     if (msg.chat.endsWith('@g.us')) {
       try {
@@ -439,7 +454,8 @@ export default {
 
       let tempHistory = [...history]; 
       let currentText = text;
-      let attempts = 0;      const MAX_ATTEMPTS = 5;
+      let attempts = 0;
+      const MAX_ATTEMPTS = 5;
       let finalResponseSent = false;
       const ALLOWED_TOOLS = ['send_message', 'manage_group', 'run_terminal', 'search_web', 'web_request'];
 
@@ -457,7 +473,7 @@ export default {
         if (!result?.status || !result.text) break;  
 
         const responseText = result.text.trim();
-        const toolCall = parseToolCall(responseText);
+        const { toolCall, isToolResponse } = extractToolCall(responseText);
 
         if (toolCall && ALLOWED_TOOLS.includes(toolCall.tool)) {
           statusText += `\n- Acción: ${toolCall.tool}`;
@@ -465,10 +481,15 @@ export default {
           
           const toolResult = await executeTool(toolCall.tool, toolCall.args, { msg, sock });
           
-          tempHistory.push({ role: 'assistant', content: `[Ejecutando herramienta: ${toolCall.tool}]` });
-          tempHistory.push({ role: 'user', content: `[Resultado de ${toolCall.tool}]:\n${toolResult}` });
+          tempHistory.push({ role: 'assistant', content: `\`\`\`json\n${JSON.stringify(toolCall)}\n\`\`\`` });
+          tempHistory.push({ role: 'user', content: `[Resultado de ${toolCall.tool}]:\n${toolResult}\n\nContinúa con el siguiente paso o responde al usuario.` });
           
-          currentText = "Procesa el resultado de la herramienta anterior y responde al usuario en texto normal, o llama a otra herramienta si es necesario.";
+          currentText = `[Sistema: La herramienta ${toolCall.tool} se ejecutó correctamente. Resultado: ${toolResult}\n\nPor favor, procesa este resultado y continúa con el siguiente paso si es necesario, o responde al usuario en texto normal.]`;
+          
+        } else if (isToolResponse) {
+          tempHistory.push({ role: 'assistant', content: responseText });
+          tempHistory.push({ role: 'user', content: `[Sistema: Detecté que intentaste usar una herramienta pero el formato es inválido o la herramienta no existe. Las herramientas válidas son: ${ALLOWED_TOOLS.join(', ')}.\n\nPor favor, responde en texto normal o genera un JSON válido con una herramienta existente.]` });          currentText = "Corrige tu respuesta. Responde en texto normal o usa una herramienta válida.";
+          
         } else {
           history.push({ role: 'assistant', content: responseText });  
           await sock.sendMessage(msg.chat, { text: responseText, edit: statusKey });  
@@ -488,5 +509,6 @@ export default {
       await msg.reply(  
         `> Ocurrió un error al ejecutar el comando *${usedPrefix + command}*.\n> [Error: *${e.message}*]`  
       );  
-    }  },
+    }
+  },
 };
