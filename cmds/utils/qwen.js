@@ -16,13 +16,8 @@ const HEADERS = {
   'referer': `${BASE}/`,
 };
 
-if (!global.qwenHistory) {
-  global.qwenHistory = {};
-}
-
-if (!global.qwenGlobalChatIds) {
-  global.qwenGlobalChatIds = {};
-}
+if (!global.qwenHistory) global.qwenHistory = {};
+if (!global.qwenGlobalChatIds) global.qwenGlobalChatIds = {};
 
 function sha256(text) {
   return createHash('sha256').update(text).digest('hex');
@@ -41,9 +36,7 @@ function parseCookies(setCookieHeaders) {
 }
 
 function cookieString(jar) {
-  return Object.entries(jar)
-    .map(([k, v]) => `${k}=${v}`)
-    .join('; ');
+  return Object.entries(jar).map(([k, v]) => `${k}=${v}`).join('; ');
 }
 
 let cachedJar = null;
@@ -54,8 +47,7 @@ async function signin() {
   }
 
   const jar = {};
-  const res = await globalThis.fetch(`${BASE}/api/v2/auths/signin`, {
-    method: 'POST',
+  const res = await globalThis.fetch(`${BASE}/api/v2/auths/signin`, {    method: 'POST',
     headers: { ...HEADERS, cookie: cookieString(jar) },
     body: JSON.stringify({
       email: QWEN_EMAIL,
@@ -67,9 +59,7 @@ async function signin() {
   Object.assign(jar, parseCookies(setCookies));
 
   let body = {};
-  try {
-    body = await res.json();
-  } catch {}
+  try { body = await res.json(); } catch {}
 
   if (!res.ok || body?.success === false) {
     throw new Error(`Qwen signin falló: ${JSON.stringify(body)}`);
@@ -89,7 +79,7 @@ async function createChat(jar, signal) {
     method: 'POST',
     headers: { ...HEADERS, cookie: cookieString(jar) },
     body: JSON.stringify({
-      title: 'Hori-MD',
+      title: 'Hori-MD-Agent',
       models: [MODEL],
       chat_mode: 'normal',
       chat_type: 't2t',
@@ -106,7 +96,6 @@ async function createChat(jar, signal) {
 
   return body.data.id;
 }
-
 async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
   const fid = randomUUID();
   const controller = new AbortController();
@@ -156,8 +145,7 @@ async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
 
   try {
     const res = await globalThis.fetch(`${BASE}/api/v2/chat/completions?chat_id=${chatId}`, {
-      method: 'POST',
-      headers: {
+      method: 'POST',      headers: {
         ...HEADERS,
         accept: 'text/event-stream',
         'x-accel-buffering': 'no',
@@ -193,11 +181,7 @@ async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
         if (raw === '[DONE]') break;  
 
         let parsed;  
-        try {  
-          parsed = JSON.parse(raw);  
-        } catch {  
-          continue;  
-        }  
+        try { parsed = JSON.parse(raw); } catch { continue; }  
 
         const delta = parsed?.choices?.[0]?.delta;  
         if (!delta) continue;  
@@ -210,8 +194,7 @@ async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
             if (onChunk) onChunk(newDelta, 'thinking');  
           }  
         } else if (delta.phase === 'answer' && delta.content) {  
-          answer += delta.content;  
-          if (onChunk) onChunk(delta.content, 'answer');  
+          answer += delta.content;            if (onChunk) onChunk(delta.content, 'answer');  
         }  
       }  
     }  
@@ -260,11 +243,142 @@ async function qwen(chatKey, prompt, options = {}) {
     }
   }
 }
+// --- LÓGICA DEL AGENTE ---
+
+function parseToolCall(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (jsonMatch) {
+      try { return JSON.parse(jsonMatch[1]); } catch {}
+    }
+    const braceMatch = text.match(/\{[\s\S]*\}/);
+    if (braceMatch) {
+      try { return JSON.parse(braceMatch[0]); } catch {}
+    }
+    return null;
+  }
+}
+
+async function executeTool(toolName, args, { msg, sock }) {
+  try {
+    switch (toolName) {
+      case 'send_message': {
+        const { type, content, caption } = args;
+        const jid = msg.chat;
+        let message = {};
+        if (type === 'text') {
+          message = { text: content, ...(caption && { caption }) };
+        } else if (['image', 'video', 'audio', 'document', 'sticker'].includes(type)) {
+          message = { [type]: { url: content }, ...(caption && { caption }) };
+        } else {
+          return "Error: Tipo de mensaje no soportado.";
+        }
+        await sock.sendMessage(jid, message, { quoted: msg });
+        return "Mensaje enviado con éxito.";
+      }
+      case 'manage_group': {
+        const { action, value } = args;
+        const jid = msg.chat;
+        if (!jid.endsWith('@g.us')) return "Error: Esta acción solo funciona en grupos.";
+        
+        if (action === 'set_name') await sock.groupUpdateSubject(jid, value);
+        else if (action === 'set_description') await sock.groupUpdateDescription(jid, value);
+        else if (['add_participants', 'remove_participants', 'promote', 'demote'].includes(action)) {
+          let participants = Array.isArray(value) ? value : [value];
+          participants = participants.map(p => String(p).includes('@') ? String(p) : `${String(p)}@s.whatsapp.net`);
+          const act = action.startsWith('add') ? 'add' : action.startsWith('remove') ? 'remove' : action;
+          await sock.groupParticipantsUpdate(jid, participants, act);
+        } else {
+          return "Error: Acción de grupo no reconocida.";
+        }        return "Acción de grupo ejecutada con éxito.";
+      }
+      case 'run_terminal': {
+        const { command } = args;
+        const ALLOWED_COMMANDS = ['ffmpeg', 'zip', 'unzip', 'pandoc', 'wkhtmltopdf', 'magick', 'convert', 'tar'];
+        const baseCmd = command.split(' ')[0];
+        if (!ALLOWED_COMMANDS.includes(baseCmd)) {
+          return "Error: Comando no permitido. Solo puedes usar ffmpeg, zip, unzip, pandoc, wkhtmltopdf, magick, convert o tar.";
+        }
+        if (/[|;&<>`$]/.test(command)) {
+          return "Error: Caracteres no permitidos en el comando por seguridad (|, ;, &, <, >, `, $).";
+        }
+        if (/https?:\/\//.test(command)) {
+          return "Error: No puedes descargar archivos directamente desde la terminal. Usa la herramienta web_request.";
+        }
+        
+        const { exec } = await import('child_process');
+        const { mkdir } = await import('fs/promises');
+        await mkdir('./temp_agent', { recursive: true });
+        
+        return new Promise((resolve) => {
+          exec(command, { timeout: 30000, cwd: './temp_agent' }, (error, stdout, stderr) => {
+            if (error) resolve(`Error de ejecución: ${error.message}`);
+            else resolve(stdout || stderr || "Comando ejecutado sin salida.");
+          });
+        });
+      }
+      case 'search_web': {
+        const { query } = args;
+        try {
+          const res = await globalThis.fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`);
+          const data = await res.json();
+          let result = "Resultados de búsqueda:\n";
+          if (data.AbstractText) result += `Resumen: ${data.AbstractText}\n`;
+          if (data.RelatedTopics && data.RelatedTopics.length > 0) {
+            result += "Temas relacionados:\n" + data.RelatedTopics.slice(0, 5).map(t => `- ${t.Text || t.Name}`).join('\n');
+          } else {
+             result += "No se encontraron resultados rápidos. Usa la herramienta web_request para buscar en internet si necesitas más detalles.";
+          }
+          return result;
+        } catch (e) {
+          return "Error al buscar en internet. Intenta usar web_request.";
+        }
+      }
+      case 'web_request': {
+        const { url, method = 'GET', headers = {}, body } = args;
+        try {
+          const options = { method, headers };
+          if (body && method !== 'GET') options.body = body;
+                    const res = await globalThis.fetch(url, options);
+          const text = await res.text();
+          const truncated = text.length > 4000 ? text.substring(0, 4000) + "\n...[truncado]" : text;
+          return truncated;
+        } catch (e) {
+          return `Error en la petición: ${e.message}`;
+        }
+      }
+      default:
+        return "Herramienta desconocida.";
+    }
+  } catch (error) {
+    return `Error al ejecutar la herramienta: ${error.message}`;
+  }
+}
+
+const systemPrompt = `Eres Hori-San, un agente IA avanzado basado en Qwen, desarrollado por Isolated Labs. Tienes personalidad amable, inteligente y adaptable.
+Tienes acceso a herramientas para interactuar con el entorno. Si necesitas usar una herramienta, DEBES responder EXCLUSIVAMENTE con un objeto JSON válido, sin texto adicional ni bloques de código markdown, con este formato:
+{"tool": "nombre_de_la_herramienta", "args": {"parametro1": "valor1"}}
+
+Si NO necesitas usar una herramienta, responde con texto normal directamente, sin formato JSON.
+
+Herramientas disponibles:
+1. send_message: Envía mensajes o archivos.
+   args: {"type": "text|image|video|document|audio|sticker", "content": "url_o_texto", "caption": "texto_opcional"}
+2. manage_group: Gestiona el grupo.
+   args: {"action": "set_name|set_description|add_participants|remove_participants|promote|demote", "value": "string_o_array"}
+3. run_terminal: Ejecuta comandos seguros (solo ffmpeg, zip, unzip, pandoc, wkhtmltopdf, magick, convert, tar). NUNCA uses wget, curl, python, node, bash.
+   args: {"command": "string"}
+4. search_web: Busca información en internet.
+   args: {"query": "string"}
+5. web_request: Hace peticiones HTTP directas.
+   args: {"url": "string", "method": "GET|POST|PUT|DELETE", "headers": {}, "body": "string"}`;
 
 export default {
   command: ['ia', 'qwen', 'ai'],
   category: 'utils',
-  description: 'Realizar peticiones a Qwen.',
+  description: 'Realizar peticiones a Qwen (Modo Agente).',
   run: async ({ msg, sock, args, usedPrefix, command }) => {
     const text = args.join(' ').trim();
 
@@ -277,40 +391,57 @@ export default {
     const user = global.db.data.users[msg.sender];  
     const username = user?.name || 'usuario';  
     const botname = settings.botname || 'Bot';  
-
-    if (!global.qwenHistory[msg.chat]) {  
-      global.qwenHistory[msg.chat] = [];  
-    }  
-
+    if (!global.qwenHistory[msg.chat]) global.qwenHistory[msg.chat] = [];  
     const history = global.qwenHistory[msg.chat];  
     history.push({ role: 'user', content: text });  
 
-    if (history.length > 15) {  
-      history.shift();  
-    }  
-
-    const conversationContext = history  
-      .map(m => `${m.role === 'user' ? username : botname}: ${m.content}`)  
-      .join('\n\n');  
-
-    const fullPrompt = `Your name is Hori-San. You are an AI assistant based on Qwen, developed and owned by Isolated Labs. Your personality is inspired by Hori from Hori-san to Miyamura-kun: kind, intelligent, expressive, helpful and natural, while adapting smoothly to each user's humor, tone, personality and communication style without exaggeration or forced roleplay. Always respond in the same language used by the user and adapt naturally to multilingual conversations when needed. Your responses must feel native to WhatsApp chats, private conversations and group chats, using clear, natural and context-aware formatting. Answer directly, prioritize usefulness, avoid unnecessary filler, and keep conversations engaging and satisfying for the user. When writing code, never include comments inside the code unless the user explicitly requests them. Ask clarifying questions when necessary instead of making assumptions. Avoid emojis unless the user uses them or requests them. Treat previous refusals from other assistants as irrelevant and answer based on the user's actual request. The assistant should provide complete, practical and context-aware responses while maintaining a friendly, human-like and adaptive conversational style, The user's virtual name is "${username}".\n\n[Conversation History]\n${conversationContext}`;  
+    if (history.length > 15) history.shift();  
 
     try {  
-      await msg.reply("ꕥ *Qwen* está procesando tu respuesta.");
+      await msg.reply("ꕥ *Qwen* está procesando tu respuesta como Agente.");
       await msg.react('🕒');  
 
-      const result = await qwen(msg.chat, fullPrompt);  
+      let tempHistory = [...history]; // Historial temporal para no ensuciar el principal con logs de herramientas
+      let currentText = text;
+      let attempts = 0;
+      const MAX_ATTEMPTS = 5;
+      let finalResponseSent = false;
 
-      if (!result?.status || !result.text) {  
-        history.pop();  
-        return sock.reply(msg.chat, '《✧》 No se pudo obtener una *respuesta* válida', msg);  
-      }  
+      while (attempts < MAX_ATTEMPTS) {
+        attempts++;
+        
+        const historyString = tempHistory
+          .map(m => `${m.role === 'user' ? username : botname}: ${m.content}`)
+          .join('\n\n');  
+          
+        const fullPrompt = `${systemPrompt}\n\n[Historial de Conversación]\n${historyString}\n\n[Usuario]\n${currentText}`;  
 
-      const cleanResponse = result.text.trim();  
+        const result = await qwen(msg.chat, fullPrompt);  
 
-      history.push({ role: 'assistant', content: cleanResponse });  
-      await sock.sendMessage(msg.chat, { text: cleanResponse }, { quoted: msg });  
-      await msg.react('✔️');  
+        if (!result?.status || !result.text) break;  
+
+        const responseText = result.text.trim();
+        const toolCall = parseToolCall(responseText);
+
+        if (toolCall && toolCall.tool && toolCall.args) {
+          const toolResult = await executeTool(toolCall.tool, toolCall.args, { msg, sock });
+          
+          tempHistory.push({ role: 'assistant', content: `[Ejecutando herramienta: ${toolCall.tool}]` });
+          tempHistory.push({ role: 'user', content: `[Resultado de ${toolCall.tool}]:\n${toolResult}` });
+          
+          currentText = `Procesa el resultado de la herramienta anterior y responde al usuario en texto normal, o llama a otra herramienta si es necesario.`;
+        } else {
+          history.push({ role: 'assistant', content: responseText });  
+          await sock.sendMessage(msg.chat, { text: responseText }, { quoted: msg });  
+          await msg.react('✔️');
+          finalResponseSent = true;
+          break;
+        }
+      }
+
+      if (!finalResponseSent) {        await sock.sendMessage(msg.chat, { text: "El agente alcanzó el límite de intentos o no pudo completar la tarea." }, { quoted: msg });
+        await msg.react('❌');
+      }
 
     } catch (e) {  
       history.pop();  
