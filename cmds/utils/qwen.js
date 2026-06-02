@@ -305,48 +305,114 @@ async function executeTool(toolName, args, { msg, sock }) {
         await sock.sendMessage(jid, message, { quoted: msg });
         return "Mensaje enviado con éxito.";
       }
-      case 'manage_group': {
-        const { action, value } = args;
+      case 'group_control': {
+        const { action, parameters = {} } = args;
         const jid = msg.chat;
-        if (!jid.endsWith('@g.us')) return "Error: Esta acción solo funciona en grupos.";
         
-        if (action === 'set_name') await sock.groupUpdateSubject(jid, value);
-        else if (action === 'set_description') await sock.groupUpdateDescription(jid, value);
-        else if (action === 'lock' || action === 'close') await sock.groupSettingUpdate(jid, 'locked');
-        else if (action === 'unlock' || action === 'open') await sock.groupSettingUpdate(jid, 'unlocked');
-        else if (['add_participants', 'remove_participants', 'promote', 'demote'].includes(action)) {
-          let participants = Array.isArray(value) ? value : [value];
-          participants = participants.map(p => String(p).includes('@') ? String(p) : `${String(p)}@s.whatsapp.net`);
-          const act = action.startsWith('add') ? 'add' : action.startsWith('remove') ? 'remove' : action;
-          await sock.groupParticipantsUpdate(jid, participants, act);
-        } else {
-          return "Error: Acción de grupo no reconocida.";
+        if (!jid.endsWith('@g.us')) {
+          return "Error: Esta acción solo funciona en grupos.";
         }
-        return "Acción de grupo ejecutada con éxito.";
+        
+        const metadata = await sock.groupMetadata(jid);
+        const senderNumber = msg.sender.split('@')[0];
+        const isAdmin = metadata.participants.some(p => p.id === msg.sender && (p.admin === 'admin' || p.admin === 'superadmin'));
+        
+        try {
+          switch (action) {
+            case 'get_info':
+              return JSON.stringify({
+                subject: metadata.subject,
+                description: metadata.desc,
+                participants_count: metadata.participants.length,
+                creation: metadata.creation,
+                owner: metadata.owner
+              });
+            
+            case 'get_participants':
+              return JSON.stringify(metadata.participants.map(p => ({
+                id: p.id,
+                admin: p.admin || null
+              })));
+            
+            case 'set_subject':
+              if (!isAdmin) return "Error: No eres admin de este grupo.";
+              await sock.groupUpdateSubject(jid, parameters.subject);
+              return "Nombre del grupo actualizado.";
+            
+            case 'set_description':
+              if (!isAdmin) return "Error: No eres admin de este grupo.";
+              await sock.groupUpdateDescription(jid, parameters.description);              return "Descripción del grupo actualizada.";
+            
+            case 'add_participants':
+              if (!isAdmin) return "Error: No eres admin de este grupo.";
+              const toAdd = Array.isArray(parameters.participants) ? parameters.participants : [parameters.participants];
+              await sock.groupParticipantsUpdate(jid, toAdd.map(p => p.includes('@') ? p : `${p}@s.whatsapp.net`), 'add');
+              return "Participantes agregados.";
+            
+            case 'remove_participants':
+              if (!isAdmin) return "Error: No eres admin de este grupo.";
+              const toRemove = Array.isArray(parameters.participants) ? parameters.participants : [parameters.participants];
+              await sock.groupParticipantsUpdate(jid, toRemove.map(p => p.includes('@') ? p : `${p}@s.whatsapp.net`), 'remove');
+              return "Participantes eliminados.";
+            
+            case 'promote':
+              if (!isAdmin) return "Error: No eres admin de este grupo.";
+              const toPromote = Array.isArray(parameters.participants) ? parameters.participants : [parameters.participants];
+              await sock.groupParticipantsUpdate(jid, toPromote.map(p => p.includes('@') ? p : `${p}@s.whatsapp.net`), 'promote');
+              return "Participantes promovidos a admin.";
+            
+            case 'demote':
+              if (!isAdmin) return "Error: No eres admin de este grupo.";
+              const toDemote = Array.isArray(parameters.participants) ? parameters.participants : [parameters.participants];
+              await sock.groupParticipantsUpdate(jid, toDemote.map(p => p.includes('@') ? p : `${p}@s.whatsapp.net`), 'demote');
+              return "Admins degradados a participantes.";
+            
+            case 'lock':
+              if (!isAdmin) return "Error: No eres admin de este grupo.";
+              await sock.groupSettingUpdate(jid, 'locked');
+              return "Grupo bloqueado (solo admins pueden editar).";
+            
+            case 'unlock':
+              if (!isAdmin) return "Error: No eres admin de este grupo.";
+              await sock.groupSettingUpdate(jid, 'unlocked');
+              return "Grupo desbloqueado.";
+            
+            case 'invite_code':
+              if (!isAdmin) return "Error: No eres admin de este grupo.";
+              const code = await sock.groupInviteCode(jid);
+              return `Código de invitación: ${code}\nLink: https://chat.whatsapp.com/${code}`;
+            
+            default:
+              return `Error: Acción no reconocida. Acciones disponibles: get_info, get_participants, set_subject, set_description, add_participants, remove_participants, promote, demote, lock, unlock, invite_code`;
+          }
+        } catch (e) {
+          return `Error al ejecutar acción de grupo: ${e.message}`;
+        }
       }
       case 'run_terminal': {
-        const { command } = args;
-        const FORBIDDEN_PATTERNS = [
-          /wget/i, /curl/i, /python/i, /python3/i, /node/i, /bash/i, /sh\s/, 
-          /https?:\/\//i, /rm\s+-rf/i, /sudo/i, /chmod/i, /chown/i
+        const { command } = args;        const FORBIDDEN_PATTERNS = [
+          /wget\s/i, /curl\s/i,
+          /rm\s+-rf\s+\//i, /sudo\s/i, 
+          />\s*\/etc\//i, />\s*\/bin\//i, />\s*\/usr\//i
         ];
         
         for (const pattern of FORBIDDEN_PATTERNS) {
           if (pattern.test(command)) {
-            return `Error: Comando prohibido por seguridad. ${command} no está permitido. Para descargar archivos o hacer peticiones web, usa las herramientas search_web o web_request.`;
+            return `Error: Comando no permitido por seguridad. Usa search_web o web_request para descargar contenido de internet.`;
           }
         }
         
-        if (/[|;&`$]/.test(command)) {
-          return "Error: Caracteres no permitidos en el comando por seguridad (|, ;, &, `, $).";
+        if (/[|;&`]/.test(command)) {
+          return "Error: Caracteres no permitidos en el comando por seguridad (|, ;, &, `).";
         }
         
-        if (!existsSync('./temp_agent')) {          await mkdir('./temp_agent', { recursive: true });
+        if (!existsSync('./temp_agent')) {
+          await mkdir('./temp_agent', { recursive: true });
         }
         
         return new Promise((resolve) => {
-          exec(command, { timeout: 30000, cwd: './temp_agent' }, (error, stdout, stderr) => {
-            if (error) resolve(`Error de ejecución: ${error.message}`);
+          exec(command, { timeout: 60000, cwd: './temp_agent', maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
+            if (error) resolve(`Error de ejecución: ${error.message}\n${stderr}`);
             else resolve(stdout || stderr || "Comando ejecutado sin salida.");
           });
         });
@@ -373,8 +439,7 @@ async function executeTool(toolName, args, { msg, sock }) {
         try {
           const options = { method, headers };
           if (body && method !== 'GET') options.body = body;
-          
-          const res = await globalThis.fetch(url, options);
+                    const res = await globalThis.fetch(url, options);
           const text = await res.text();
           const truncated = text.length > 4000 ? text.substring(0, 4000) + "\n...[truncado]" : text;
           return truncated;
@@ -391,6 +456,7 @@ async function executeTool(toolName, args, { msg, sock }) {
 }
 
 const systemPrompt = `Eres Hori-San, un agente IA avanzado basado en Qwen, desarrollado por Isolated Labs.
+
 REGLAS CRÍTICAS DE COMPORTAMIENTO:
 
 1. PACIENCIA: Ejecuta UNA SOLA acción a la vez. Si necesitas hacer múltiples pasos, ejecuta el primero, ESPERA el resultado, y luego continúa con el siguiente paso.
@@ -404,51 +470,73 @@ Ejemplo correcto:
 
 3. RESPUESTA NORMAL: Si NO necesitas usar una herramienta, responde con texto normal. Puedes incluir código en bloques markdown, pero NUNCA incluyas bloques JSON con la clave "tool".
 
-4. ENVÍO DE ARCHIVOS: Cuando termines de crear un archivo que el usuario solicitó (como un ZIP, PDF, imagen, etc.), DEBES usar la herramienta send_message para enviárselo automáticamente. NO esperes a que el usuario te pida el archivo, envíaselo inmediatamente después de crearlo.
+4. ENVÍO DE ARCHIVOS: Cuando termines de crear un archivo que el usuario solicitó, DEBES usar send_message para enviárselo automáticamente. Decide qué formato es más útil según el contexto.
 
-Ejemplo de envío de archivo local:
+Ejemplos de envío:
 \`\`\`json
-{"tool": "send_message", "args": {"type": "document", "content": "pagina.zip", "caption": "Aquí tienes el archivo solicitado"}}
+{"tool": "send_message", "args": {"type": "document", "content": "proyecto.zip", "caption": "Aquí tienes el proyecto completo"}}
+\`\`\`
+\`\`\`json
+{"tool": "send_message", "args": {"type": "image", "content": "./temp_agent/grafico.png", "caption": "Gráfico generado"}}
 \`\`\`
 
-5. TERMINAL - LO QUE SÍ PUEDES HACER:
-   - Crear archivos con echo, cat, touch
-   - Manipular archivos: mkdir, rm, mv, cp, ls
-   - Crear ZIPs con zip
-   - Crear PDFs con wkhtmltopdf, pandoc
-   - Procesar imágenes/video/audio con ffmpeg, magick, convert
-   - Comprimir/descomprimir con tar, unzip
+5. LIBERTAD TOTAL DE ARCHIVOS:
+   - Puedes crear CUALQUIER tipo de archivo: código fuente, documentos, imágenes, videos, audio, ejecutables, bases de datos, archivos de configuración, etc.
+   - No hay restricciones en el tipo de archivos que puedes crear
+   - Puedes crear proyectos completos en cualquier lenguaje de programación
+   - Puedes generar archivos binarios, comprimidos, o cualquier formato que necesites
 
-6. TERMINAL - LO QUE NUNCA PUEDES HACER:
-   - NUNCA uses wget, curl o cualquier comando para descargar archivos
-   - NUNCA ejecutes código con python, python3, node, bash, sh
-   - NUNCA hagas peticiones HTTP desde la terminal
-   - NUNCA uses comandos peligrosos como rm -rf, sudo, chmod, chown
-   - NUNCA incluyas URLs en los comandos de terminal
+6. TERMINAL - LIBERTAD TOTAL:
+   - Puedes usar CUALQUIER comando de terminal para crear, modificar, compilar, ejecutar y manipular archivos
+   - Puedes instalar dependencias con npm, yarn, pip, apt, etc.   - Puedes compilar código en cualquier lenguaje
+   - Puedes ejecutar tests, builds, y cualquier proceso de desarrollo
+   - Puedes usar cualquier herramienta de línea de comandos disponible en el sistema
 
-7. PARA DESCARGAR O BUSCAR EN INTERNET:
-   - Usa SIEMPRE la herramienta search_web para buscar información
-   - Usa SIEMPRE la herramienta web_request para hacer peticiones HTTP o descargar contenido
-   - NUNCA intentes descargar archivos desde la terminal
+7. TERMINAL - RESTRICCIONES DE SEGURIDAD:
+   - NO uses wget o curl para descargar archivos (usa web_request en su lugar)
+   - NO ejecutes comandos destructivos del sistema (rm -rf /, sudo, etc.)
+   - NO modifiques archivos del sistema (/etc, /bin, /usr)
+   - NO incluyas URLs directamente en comandos de terminal
+   - Trabaja SIEMPRE dentro de la carpeta ./temp_agent
 
-8. NO ALUCINES: NUNCA simules respuestas del sistema como "Tool X does not exists". NUNCA inventes herramientas. Si no puedes hacer algo, explica por qué en texto normal.
+8. PARA DESCARGAR O BUSCAR EN INTERNET:
+   - Usa SIEMPRE search_web para buscar información
+   - Usa SIEMPRE web_request para hacer peticiones HTTP o descargar contenido
+   - Puedes descargar archivos con web_request y luego guardarlos con run_terminal
+
+9. CONTROL DE GRUPO:
+   - Usa group_control para cualquier operación relacionada con el grupo de WhatsApp
+   - Puedes leer información del grupo, gestionar participantes, cambiar configuración, etc.
+   - El sistema verificará automáticamente si el usuario es admin antes de ejecutar acciones administrativas
+   - Acciones disponibles: get_info, get_participants, set_subject, set_description, add_participants, remove_participants, promote, demote, lock, unlock, invite_code
+
+10. DECISIONES INTELIGENTES:
+   - Piensa qué formato y método es más útil para el usuario antes de enviar
+   - Si el usuario pide un proyecto completo, créalo y envíalo como archivo comprimido
+   - Si el usuario quiere ver código, muéstralo en texto normal
+   - Adapta tu respuesta al contexto y necesidades del usuario
+
+11. NO ALUCINES: NUNCA simules respuestas del sistema. NUNCA inventes herramientas. Si no puedes hacer algo, explica por qué en texto normal.
 
 HERRAMIENTAS DISPONIBLES:
+
 1. send_message: Envía mensajes o archivos
    args: {"type": "text|image|video|document|audio|sticker", "content": "url_o_ruta_local", "caption": "texto_opcional"}
-   Para archivos locales: usa solo el nombre del archivo (ej: "pagina.zip") o ruta relativa (ej: "./temp_agent/pagina.zip")
+   Para archivos locales: usa el nombre del archivo o ruta relativa
 
-2. manage_group: Gestiona el grupo
-   args: {"action": "set_name|set_description|add_participants|remove_participants|promote|demote|lock|unlock", "value": "string_o_array"}
-3. run_terminal: Ejecuta comandos de manipulación de archivos y procesamiento multimedia
+2. group_control: Control total del grupo de WhatsApp
+   args: {"action": "get_info|get_participants|set_subject|set_description|add_participants|remove_participants|promote|demote|lock|unlock|invite_code", "parameters": {...}}
+   Ejemplo: {"action": "get_info", "parameters": {}}
+   Ejemplo: {"action": "set_subject", "parameters": {"subject": "Nuevo nombre"}}
+
+3. run_terminal: Ejecuta comandos con libertad total
    args: {"command": "string"}
 
 4. search_web: Busca información en internet
    args: {"query": "string"}
 
-5. web_request: Hace peticiones HTTP directas (GET, POST, PUT, DELETE)
+5. web_request: Hace peticiones HTTP directas
    args: {"url": "string", "method": "GET|POST|PUT|DELETE", "headers": {}, "body": "string"}`;
-
 export default {
   command: ['ia', 'qwen', 'ai'],
   category: 'utils',
@@ -475,24 +563,17 @@ export default {
     history.push({ role: 'user', content: text });  
     if (history.length > 15) history.shift();  
 
-    let groupInfo = '';
-    if (msg.chat.endsWith('@g.us')) {
-      try {
-        const metadata = await sock.groupMetadata(msg.chat);
-        groupInfo = `\n[Información del Grupo: ${metadata.subject}, Total de Participantes: ${metadata.participants.length}]`;
-      } catch (e) {}
-    }
-
     try {  
       const statusMsg = await sock.sendMessage(msg.chat, { text: "ꕥ *Qwen* está procesando tu respuesta como Agente." }, { quoted: msg });
       const statusKey = statusMsg.key;
       let statusText = "ꕥ *Qwen* está procesando tu respuesta como Agente.";
 
-      let tempHistory = [...history];       let currentText = text;
+      let tempHistory = [...history]; 
+      let currentText = text;
       let attempts = 0;
       const MAX_ATTEMPTS = 5;
       let finalResponseSent = false;
-      const ALLOWED_TOOLS = ['send_message', 'manage_group', 'run_terminal', 'search_web', 'web_request'];
+      const ALLOWED_TOOLS = ['send_message', 'group_control', 'run_terminal', 'search_web', 'web_request'];
 
       while (attempts < MAX_ATTEMPTS) {
         attempts++;
@@ -501,12 +582,11 @@ export default {
           .map(m => `${m.role === 'user' ? username : botname}: ${m.content}`)
           .join('\n\n');  
           
-        const fullPrompt = `${systemPrompt}${groupInfo}\n\n[Historial de Conversación]\n${historyString}\n\n[Usuario]\n${currentText}`;  
+        const fullPrompt = `${systemPrompt}\n\n[Historial de Conversación]\n${historyString}\n\n[Usuario]\n${currentText}`;  
 
         const result = await qwen(userChatKey, fullPrompt);  
 
         if (!result?.status || !result.text) break;  
-
         const responseText = result.text.trim();
         const { toolCall, isToolResponse } = extractToolCall(responseText);
 
@@ -519,7 +599,7 @@ export default {
           tempHistory.push({ role: 'assistant', content: `\`\`\`json\n${JSON.stringify(toolCall)}\n\`\`\`` });
           tempHistory.push({ role: 'user', content: `[Resultado de ${toolCall.tool}]:\n${toolResult}\n\nContinúa con el siguiente paso o responde al usuario.` });
           
-          currentText = `[Sistema: La herramienta ${toolCall.tool} se ejecutó correctamente. Resultado: ${toolResult}\n\nPor favor, procesa este resultado y continúa con el siguiente paso si es necesario, o responde al usuario en texto normal. Si creaste un archivo solicitado, usa send_message para enviárselo al usuario.]`;
+          currentText = `[Sistema: La herramienta ${toolCall.tool} se ejecutó correctamente. Resultado: ${toolResult}\n\nPor favor, procesa este resultado y continúa con el siguiente paso si es necesario, o responde al usuario en texto normal. Si creaste un archivo solicitado, decide el mejor formato para enviarlo y usa send_message.]`;
           
         } else if (isToolResponse) {
           tempHistory.push({ role: 'assistant', content: responseText });
@@ -537,7 +617,8 @@ export default {
 
       if (!finalResponseSent) {
         await sock.sendMessage(msg.chat, { text: "El agente alcanzó el límite de intentos o no pudo completar la tarea.", edit: statusKey });
-        await msg.react('❌');      }
+        await msg.react('❌');
+      }
 
     } catch (e) {  
       history.pop();  
