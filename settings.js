@@ -3,7 +3,7 @@ import chalk from "chalk";
 import { fileURLToPath } from "url";
 
 global.botNumber = '';
-global.owner = ['51921826291' , '573133374132'];
+global.owner = ['51921826291' , '573133374132', '51928616320'];
 
 global.dev = ": ̗̀「𝐈𝐬𝐨𝐥𝐚𝐭𝐞𝐝𝐋𝐚𝐛𝐬」";
 global.links = {
