@@ -389,6 +389,22 @@ async function executeTool(toolName, args, { msg, sock }) {
         if (typeof sock[method] !== 'function') {
           return `Error: El método "${method}" no existe en la instancia de sock.`;
         }
+
+        if (method === 'editMessage') {
+          try {
+            const [jid, newText, messageKey] = parameters;
+            if (!jid || !newText || !messageKey) {
+              return "Error en editMessage: Faltan parámetros obligatorios. Formato requerido: [jid, nuevoTexto, messageKey]";
+            }
+            const result = await sock.sendMessage(jid, {
+              text: newText,
+              edit: messageKey
+            });
+            return JSON.stringify({ success: true, message: "Mensaje editado con éxito", result }, null, 2);
+          } catch (e) {
+            return `Error al editar mensaje: ${e.message}`;
+          }
+        }
         
         if (ADMIN_ONLY_METHODS.includes(method) && msg.chat.endsWith('@g.us')) {
           try {
