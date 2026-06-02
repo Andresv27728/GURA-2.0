@@ -138,7 +138,7 @@ const retriesLimit = 15;
 async function warmupGroups(sock) {
   try {
     const allChats = Object.values(global.db.data.chats);
-    const chatIds = allChats.map((c) => c.id).filter((id) => id.endsWith('@g.us')).slice(0, 50);
+    const chatIds = allChats.map((c) => c.id).filter((id) => id && id.endsWith('@g.us')).slice(0, 50);
     if (!chatIds.length) return;
     console.log(chalk.gray(`[ ✿ ] Precargando metadata de ${chatIds.length} grupos...`));
     const t = Date.now();
