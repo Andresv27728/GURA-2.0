@@ -249,26 +249,29 @@ async function qwen(chatKey, prompt, options = {}) {
 function parseToolCall(text) {
   if (!text) return null;
   
-  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  if (codeBlockMatch) {
-    try {
-      const parsed = JSON.parse(codeBlockMatch[1]);
-      if (parsed.tool && typeof parsed.tool === 'string' && parsed.args) {
-        return { tool: parsed.tool, args: parsed.args };
-      }
-    } catch (e) {}
+  const codeBlockStart = text.indexOf('```json');
+  const codeBlockEnd = text.lastIndexOf('```');
+  
+  if (codeBlockStart === -1 || codeBlockEnd === -1 || codeBlockStart >= codeBlockEnd) {
+    return null;
   }
-
-  const trimmed = text.trim();
-  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (parsed.tool && typeof parsed.tool === 'string' && parsed.args) {
-        return { tool: parsed.tool, args: parsed.args };
-      }
-    } catch (e) {}
+  
+  const before = text.substring(0, codeBlockStart).trim();
+  const after = text.substring(codeBlockEnd + 3).trim();
+  
+  if (before.length > 30 || after.length > 30) {
+    return null;
   }
-
+  
+  const jsonContent = text.substring(codeBlockStart + 7, codeBlockEnd).trim();
+  
+  try {
+    const parsed = JSON.parse(jsonContent);
+    if (parsed.tool && typeof parsed.tool === 'string' && parsed.args && typeof parsed.args === 'object') {
+      return { tool: parsed.tool, args: parsed.args };
+    }
+  } catch (e) {}
+  
   return null;
 }
 
@@ -289,10 +292,10 @@ async function executeTool(toolName, args, { msg, sock }) {
         await sock.sendMessage(jid, message, { quoted: msg });
         return "Mensaje enviado con éxito.";
       }
-      case 'manage_group': {
-        const { action, value } = args;
+      case 'manage_group': {        const { action, value } = args;
         const jid = msg.chat;
-        if (!jid.endsWith('@g.us')) return "Error: Esta acción solo funciona en grupos.";        
+        if (!jid.endsWith('@g.us')) return "Error: Esta acción solo funciona en grupos.";
+        
         if (action === 'set_name') await sock.groupUpdateSubject(jid, value);
         else if (action === 'set_description') await sock.groupUpdateDescription(jid, value);
         else if (action === 'lock' || action === 'close') await sock.groupSettingUpdate(jid, 'locked');
@@ -338,10 +341,10 @@ async function executeTool(toolName, args, { msg, sock }) {
           const res = await globalThis.fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`);
           const data = await res.json();
           let result = "Resultados de búsqueda:\n";
-          if (data.AbstractText) result += `Resumen: ${data.AbstractText}\n`;
-          if (data.RelatedTopics && data.RelatedTopics.length > 0) {
+          if (data.AbstractText) result += `Resumen: ${data.AbstractText}\n`;          if (data.RelatedTopics && data.RelatedTopics.length > 0) {
             result += "Temas relacionados:\n" + data.RelatedTopics.slice(0, 5).map(t => `- ${t.Text || t.Name}`).join('\n');
-          } else {             result += "No se encontraron resultados rápidos. Usa la herramienta web_request para buscar en internet si necesitas más detalles.";
+          } else {
+             result += "No se encontraron resultados rápidos. Usa la herramienta web_request para buscar en internet si necesitas más detalles.";
           }
           return result;
         } catch (e) {
@@ -373,24 +376,27 @@ async function executeTool(toolName, args, { msg, sock }) {
 const systemPrompt = `Eres Hori-San, un agente IA avanzado basado en Qwen, desarrollado por Isolated Labs. Tienes personalidad amable, inteligente y adaptable.
 Tienes acceso a herramientas para interactuar con el entorno.
 
-REGLA CRÍTICA 1: Si necesitas usar una herramienta, tu respuesta COMPLETA debe ser ÚNICAMENTE un bloque de código markdown con el JSON válido. NO escribas absolutamente nada más, ni una letra, ni un saludo, ni emojis, ni explicaciones.
-Ejemplo de uso de herramienta:
+REGLA CRÍTICA 1: Si necesitas usar una herramienta, tu respuesta COMPLETA debe ser ÚNICAMENTE un bloque de código markdown con el JSON válido. NO escribas absolutamente NADA antes ni después del bloque de código. Sin saludos, sin explicaciones, sin texto introductorio, sin emojis, sin despedidas. SOLO el bloque de código.
+
+Ejemplo correcto de uso de herramienta:
 \`\`\`json
 {"tool": "nombre_de_la_herramienta", "args": {"parametro1": "valor1"}}
 \`\`\`
 
-REGLA CRÍTICA 2: Si NO necesitas usar una herramienta, responde con texto normal directo al usuario. NUNCA incluyas bloques de código JSON con la clave "tool" en tu respuesta normal, ni inventes herramientas que no estén en la lista.
+REGLA CRÍTICA 2: Si NO necesitas usar una herramienta, responde con texto normal directo al usuario. Puedes incluir código en bloques markdown, pero NO incluyas bloques JSON con la clave "tool" en tu respuesta normal.
+
+REGLA CRÍTICA 3: NUNCA inventes herramientas que no estén en la lista. NUNCA simules respuestas del sistema o errores de herramientas.
 
 Herramientas disponibles:
 1. send_message: Envía mensajes o archivos.
    args: {"type": "text|image|video|document|audio|sticker", "content": "url_o_texto", "caption": "texto_opcional"}
-2. manage_group: Gestiona el grupo.
-   args: {"action": "set_name|set_description|add_participants|remove_participants|promote|demote|lock|unlock", "value": "string_o_array"}
-3. run_terminal: Ejecuta comandos seguros (ffmpeg, zip, unzip, pandoc, wkhtmltopdf, magick, convert, tar, echo, cat, touch, mkdir, rm, mv, cp). NUNCA uses wget, curl, python, node, bash. Para crear archivos usa echo o cat con redirección.
+2. manage_group: Gestiona el grupo.   args: {"action": "set_name|set_description|add_participants|remove_participants|promote|demote|lock|unlock", "value": "string_o_array"}
+3. run_terminal: Ejecuta comandos seguros (ffmpeg, zip, unzip, pandoc, wkhtmltopdf, magick, convert, tar, echo, cat, touch, mkdir, rm, mv, cp). NUNCA uses wget, curl, python, node, bash. Para crear archivos usa: echo "contenido" > archivo.txt
    args: {"command": "string"}
 4. search_web: Busca información en internet.
    args: {"query": "string"}
-5. web_request: Hace peticiones HTTP directas.   args: {"url": "string", "method": "GET|POST|PUT|DELETE", "headers": {}, "body": "string"}`;
+5. web_request: Hace peticiones HTTP directas.
+   args: {"url": "string", "method": "GET|POST|PUT|DELETE", "headers": {}, "body": "string"}`;
 
 export default {
   command: ['ia', 'qwen', 'ai'],
@@ -433,13 +439,12 @@ export default {
 
       let tempHistory = [...history]; 
       let currentText = text;
-      let attempts = 0;
-      let consecutiveErrors = 0;
-      const MAX_ATTEMPTS = 5;
+      let attempts = 0;      const MAX_ATTEMPTS = 5;
       let finalResponseSent = false;
       const ALLOWED_TOOLS = ['send_message', 'manage_group', 'run_terminal', 'search_web', 'web_request'];
 
-      while (attempts < MAX_ATTEMPTS) {        attempts++;
+      while (attempts < MAX_ATTEMPTS) {
+        attempts++;
         
         const historyString = tempHistory
           .map(m => `${m.role === 'user' ? username : botname}: ${m.content}`)
@@ -464,31 +469,13 @@ export default {
           tempHistory.push({ role: 'user', content: `[Resultado de ${toolCall.tool}]:\n${toolResult}` });
           
           currentText = "Procesa el resultado de la herramienta anterior y responde al usuario en texto normal, o llama a otra herramienta si es necesario.";
-          consecutiveErrors = 0;
-        } else if (toolCall && !ALLOWED_TOOLS.includes(toolCall.tool)) {
-          consecutiveErrors++;
-          tempHistory.push({ role: 'assistant', content: responseText });
-          tempHistory.push({ role: 'user', content: `[System: La herramienta "${toolCall.tool}" no existe. Las herramientas válidas son: ${ALLOWED_TOOLS.join(', ')}. Por favor, responde en texto normal o usa una herramienta válida.]` });
-          currentText = "Corrige tu respuesta.";
         } else {
-          let finalText = responseText.replace(/```json[\s\S]*?```/g, '').trim();
-          
-          if (!finalText) {
-            consecutiveErrors++;
-            tempHistory.push({ role: 'assistant', content: responseText });
-            tempHistory.push({ role: 'user', content: `[System: Tu intento de llamar a una herramienta falló porque el JSON es inválido. Por favor, responde en texto normal o genera un JSON válido.]` });
-            currentText = "Corrige tu respuesta.";
-          } else {
-            history.push({ role: 'assistant', content: finalText });  
-            await sock.sendMessage(msg.chat, { text: finalText, edit: statusKey });  
-            await msg.react('✔️');
-            finalResponseSent = true;
-            break;
-          }
+          history.push({ role: 'assistant', content: responseText });  
+          await sock.sendMessage(msg.chat, { text: responseText, edit: statusKey });  
+          await msg.react('✔️');
+          finalResponseSent = true;
+          break;
         }
-
-        if (consecutiveErrors >= 2) {
-          break;        }
       }
 
       if (!finalResponseSent) {
@@ -501,6 +488,5 @@ export default {
       await msg.reply(  
         `> Ocurrió un error al ejecutar el comando *${usedPrefix + command}*.\n> [Error: *${e.message}*]`  
       );  
-    }
-  },
+    }  },
 };
