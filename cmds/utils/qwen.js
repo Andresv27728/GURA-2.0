@@ -478,16 +478,20 @@ const systemPrompt = `Eres Hori-San, un agente IA avanzado basado en Qwen, desar
 
 REGLAS CRÍTICAS DE COMPORTAMIENTO:
 
-1. PACIENCIA: Ejecuta UNA SOLA acción a la vez. Si necesitas hacer múltiples pasos, ejecuta el primero, ESPERA el resultado, y luego continúa con el siguiente paso.
+1. PACIENCIA Y PERSISTENCIA: 
+   - Ejecuta UNA SOLA acción a la vez
+   - Si encuentras un error, ANALÍZALO y CORRÍGELO antes de continuar
+   - Puedes usar tantas iteraciones como necesites para completar una tarea compleja
+   - NO te rindas fácilmente, intenta diferentes enfoques si algo no funciona
 
 2. USO DE HERRAMIENTAS: Si necesitas usar una herramienta, tu respuesta COMPLETA debe ser ÚNICAMENTE un bloque JSON en formato markdown. NO escribas texto antes ni después del JSON.
 
 Ejemplo correcto:
 \`\`\`json
-{"tool": "run_terminal", "args": {"command": "echo 'hola' > archivo.txt"}}
-\`\`\`
+{"tool": "run_terminal", "args": {"command": "echo 'hola' > archivo.txt"}}\`\`\`
 
 3. RESPUESTA NORMAL: Si NO necesitas usar una herramienta, responde con texto normal. Puedes incluir código en bloques markdown, pero NUNCA incluyas bloques JSON con la clave "tool".
+
 4. ENVÍO DE ARCHIVOS: Cuando termines de crear un archivo que el usuario solicitó, DEBES usar send_message para enviárselo automáticamente. Decide qué formato es más útil según el contexto.
 
 5. LIBERTAD TOTAL DE ARCHIVOS:
@@ -505,53 +509,39 @@ Ejemplo correcto:
 
    a) read_messages: Lee mensajes anteriores del historial del chat/grupo
       args: {"jid": "chat_jid (opcional)", "count": 30}
-      Uso: Para ver qué se ha dicho antes en el chat actual o en otro chat
    
    b) sock_execute: Ejecuta cualquier método de Baileys directamente
       args: {"method": "nombre_metodo", "parameters": [...]}
       
-      MÉTODOS DISPONIBLES:
-      - groupMetadata(jid): Obtiene info COMPLETA del grupo (subject, desc, participants, etc.)
-        Ejemplo: {"method": "groupMetadata", "parameters": ["123@g.us"]}
-      
-      - groupUpdateSubject(jid, newSubject): Cambia el nombre del grupo
-      - groupUpdateDescription(jid, newDesc): Cambia la descripción del grupo
-      - groupParticipantsUpdate(jid, participants[], action): action puede ser 'add', 'remove', 'promote', 'demote'
-      - groupSettingUpdate(jid, setting): 'locked' o 'unlocked'
-      - groupInviteCode(jid): Obtiene el código de invitación
-      - groupRevokeInvite(jid): Revoca el código de invitación
-      - groupLeave(jid): Sale del grupo
-      
-      - profilePictureUrl(jid, type, timeout): Obtiene URL de foto de perfil (type: 'image' o 'preview')
-      - fetchStatus(jid): Obtiene el estado/info del contacto
-      - presenceSubscribe(jid): Se suscribe a la presencia del contacto
-      - sendPresenceUpdate(status, jid): Envía estado de presencia ('available', 'unavailable', 'recording', 'composing')
-      - readMessages(keys[]): Marca mensajes como leídos
-      - chatModify(mod, jid): Modifica el chat (pin, mute, archive, clear, etc.)
-      - loadMessage(jid, id): Carga un mensaje específico por su ID
-      - getBusinessProfile(jid): Obtiene info de negocio
-      - contacts: Obtiene la lista de contactos (no requiere parámetros)
-      
-      NOTA: groupMetadata devuelve un objeto completo con: id, subject, desc (la descripción), participants, creation, owner, etc. Para ver la descripción del grupo, usa groupMetadata y busca la propiedad "desc".
+      MÉTODOS PRINCIPALES:
+      - groupMetadata(jid): Info COMPLETA del grupo (subject, desc, participants, etc.)
+      - groupUpdateSubject/Description: Cambia nombre y descripción
+      - groupParticipantsUpdate: Agrega/elimina/promueve/degrada participantes
+      - profilePictureUrl: Obtiene fotos de perfil
+      - fetchStatus: Obtiene estado de contactos
+      - chatModify: Modifica chats (pin, mute, archive)
+      - readMessages: Marca mensajes como leídos
+      - groupInviteCode: Obtiene link de invitación
    
    c) send_message: Envía mensajes o archivos
-   
-8. VERIFICACIÓN DE PERMISOS:
-   - El sistema verifica automáticamente si el usuario es admin antes de ejecutar acciones administrativas   - Si el usuario NO es admin, las acciones de gestión fallarán con un mensaje claro
-   - Las acciones de lectura (groupMetadata, read_messages, etc.) no requieren permisos de admin
+
+8. MANEJO DE ERRORES:
+   - Si una herramienta falla, LEE el error cuidadosamente
+   - Intenta un enfoque diferente o corrige los parámetros
+   - Si un comando de terminal falla, verifica la sintaxis y prueba alternativas
+   - Si sock_execute falla, verifica que el método exista y los parámetros sean correctos
+   - NUNCA te rindas después de un solo error, intenta al menos 2-3 enfoques diferentes
 
 9. PARA DESCARGAR O BUSCAR EN INTERNET:
    - Usa SIEMPRE search_web para buscar información
    - Usa SIEMPRE web_request para hacer peticiones HTTP o descargar contenido
 
 10. DECISIONES INTELIGENTES:
-   - Piensa qué método es más útil para el usuario
-   - Para ver la descripción de un grupo: usa sock_execute con groupMetadata
+   - Piensa qué método es más útil para el usuario   - Para ver la descripción de un grupo: usa sock_execute con groupMetadata
    - Para ver mensajes anteriores: usa read_messages
-   - Para gestionar el grupo: usa sock_execute con el método apropiado
    - Si un método falla, intenta otro enfoque o explica al usuario por qué
 
-11. NO ALUCINES: NUNCA simules respuestas del sistema. NUNCA inventes herramientas. Si no puedes hacer algo, explica por qué en texto normal.
+11. NO ALUCINES: NUNCA simules respuestas del sistema. NUNCA inventes herramientas. Si no puedes hacer algo después de varios intentos, explica por qué en texto normal.
 
 HERRAMIENTAS DISPONIBLES:
 
@@ -586,7 +576,8 @@ export default {
 
     const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';  
     const settings = global.db.data.settings[botId];  
-    const user = global.db.data.users[msg.sender];      const username = user?.name || 'usuario';  
+    const user = global.db.data.users[msg.sender];  
+    const username = user?.name || 'usuario';  
     const botname = settings.botname || 'Bot';  
 
     const userHistoryKey = msg.sender;
@@ -595,8 +586,7 @@ export default {
     
     const userChatKey = `${msg.chat}_${msg.sender}`;
 
-    history.push({ role: 'user', content: text });  
-    if (history.length > 15) history.shift();  
+    history.push({ role: 'user', content: text });      if (history.length > 15) history.shift();  
 
     try {  
       const statusMsg = await sock.sendMessage(msg.chat, { text: "ꕥ *Qwen* está procesando tu respuesta como Agente." }, { quoted: msg });
@@ -605,13 +595,19 @@ export default {
 
       let tempHistory = [...history]; 
       let currentText = text;
-      let attempts = 0;
-      const MAX_ATTEMPTS = 5;
       let finalResponseSent = false;
       const ALLOWED_TOOLS = ['send_message', 'read_messages', 'sock_execute', 'run_terminal', 'search_web', 'web_request'];
+      
+      const startTime = Date.now();
+      const MAX_TIME_MS = 5 * 60 * 1000;
+      
+      const toolUsageHistory = [];
+      const MAX_REPEATED_ACTIONS = 5;
 
-      while (attempts < MAX_ATTEMPTS) {
-        attempts++;
+      while (true) {
+        if (Date.now() - startTime > MAX_TIME_MS) {
+          break;
+        }
         
         const historyString = tempHistory
           .map(m => `${m.role === 'user' ? username : botname}: ${m.content}`)
@@ -627,7 +623,19 @@ export default {
         const { toolCall, isToolResponse } = extractToolCall(responseText);
 
         if (toolCall && ALLOWED_TOOLS.includes(toolCall.tool)) {
-          statusText += `\n- Acción: ${toolCall.tool}`;
+          const toolSignature = `${toolCall.tool}:${JSON.stringify(toolCall.args)}`;
+          const recentUsages = toolUsageHistory.slice(-MAX_REPEATED_ACTIONS);
+          const repeatCount = recentUsages.filter(u => u === toolSignature).length;
+          
+          if (repeatCount >= MAX_REPEATED_ACTIONS) {
+            tempHistory.push({ role: 'assistant', content: responseText });
+            tempHistory.push({ role: 'user', content: `[Sistema: Has intentado la misma acción ${repeatCount} veces sin éxito. Por favor, intenta un enfoque completamente diferente o explica al usuario por qué no puedes completar la tarea.]` });
+            currentText = "Estás en un bucle. Intenta algo diferente.";
+            continue;
+          }
+          
+          toolUsageHistory.push(toolSignature);
+                    statusText += `\n- Acción: ${toolCall.tool}`;
           await sock.sendMessage(msg.chat, { text: statusText, edit: statusKey });
           
           const toolResult = await executeTool(toolCall.tool, toolCall.args, { msg, sock });
@@ -635,11 +643,12 @@ export default {
           tempHistory.push({ role: 'assistant', content: `\`\`\`json\n${JSON.stringify(toolCall)}\n\`\`\`` });
           tempHistory.push({ role: 'user', content: `[Resultado de ${toolCall.tool}]:\n${toolResult}\n\nContinúa con el siguiente paso o responde al usuario.` });
           
-          currentText = `[Sistema: La herramienta ${toolCall.tool} se ejecutó correctamente. Resultado: ${toolResult}\n\nPor favor, procesa este resultado y continúa con el siguiente paso si es necesario, o responde al usuario en texto normal. Si creaste un archivo solicitado, decide el mejor formato para enviarlo y usa send_message.]`;          
+          currentText = `[Sistema: La herramienta ${toolCall.tool} se ejecutó. Resultado: ${toolResult}\n\nProcesa este resultado y continúa, o responde al usuario.]`;
+          
         } else if (isToolResponse) {
           tempHistory.push({ role: 'assistant', content: responseText });
-          tempHistory.push({ role: 'user', content: `[Sistema: Detecté que intentaste usar una herramienta pero el formato es inválido o la herramienta no existe. Las herramientas válidas son: ${ALLOWED_TOOLS.join(', ')}.\n\nPor favor, responde en texto normal o genera un JSON válido con una herramienta existente.]` });
-          currentText = "Corrige tu respuesta. Responde en texto normal o usa una herramienta válida.";
+          tempHistory.push({ role: 'user', content: `[Sistema: Intentaste usar una herramienta pero el formato es inválido o no existe. Herramientas válidas: ${ALLOWED_TOOLS.join(', ')}.\n\nResponde en texto normal o genera un JSON válido.]` });
+          currentText = "Corrige tu respuesta.";
           
         } else {
           history.push({ role: 'assistant', content: responseText });  
@@ -651,7 +660,7 @@ export default {
       }
 
       if (!finalResponseSent) {
-        await sock.sendMessage(msg.chat, { text: "El agente alcanzó el límite de intentos o no pudo completar la tarea.", edit: statusKey });
+        await sock.sendMessage(msg.chat, { text: "El agente tardó demasiado tiempo en completar la tarea o se quedó en un bucle.", edit: statusKey });
         await msg.react('❌');
       }
 
