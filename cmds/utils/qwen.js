@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from 'crypto';
 import { exec } from 'child_process';
-import { mkdir } from 'fs/promises';
+import { mkdir, readFile } from 'fs/promises';
 import { existsSync } from 'fs';
+import { resolve } from 'path';
 
 const QWEN_EMAIL = "isolatedlabs.cn@gmail.com";
 const QWEN_PASSWORD = "IsolatedLabs-67";
@@ -46,8 +47,8 @@ let cachedJar = null;
 
 async function signin() {
   if (!QWEN_EMAIL || !QWEN_PASSWORD) {
-    throw new Error('Qwen no está configurado. Define QWEN_EMAIL y QWEN_PASSWORD.');
-  }
+    throw new Error('Qwen no está configurado. Define QWEN_EMAIL y QWEN_PASSWORD.');  }
+
   const jar = {};
   const res = await globalThis.fetch(`${BASE}/api/v2/auths/signin`, {
     method: 'POST',
@@ -193,8 +194,8 @@ async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
           const thought = delta.extra?.summary_thought?.content?.[0];  
           if (thought && thought.length > thinking.length) {  
             const newDelta = thought.slice(thinking.length);  
-            thinking = thought;  
-            if (onChunk) onChunk(newDelta, 'thinking');            }  
+            thinking = thought;              if (onChunk) onChunk(newDelta, 'thinking');  
+          }  
         } else if (delta.phase === 'answer' && delta.content) {  
           answer += delta.content;  
           if (onChunk) onChunk(delta.content, 'answer');  
@@ -242,8 +243,8 @@ async function qwen(chatKey, prompt, options = {}) {
         continue;  
       }  
 
-      throw err;  
-    }  }
+      throw err;      }
+  }
 }
 
 function extractToolCall(text) {
@@ -284,15 +285,26 @@ async function executeTool(toolName, args, { msg, sock }) {
         const { type, content, caption } = args;
         const jid = msg.chat;
         let message = {};
+        
         if (type === 'text') {
           message = { text: content, ...(caption && { caption }) };
         } else if (['image', 'video', 'audio', 'document', 'sticker'].includes(type)) {
-          message = { [type]: { url: content }, ...(caption && { caption }) };
+          if (content.startsWith('http://') || content.startsWith('https://')) {
+            message = { [type]: { url: content }, ...(caption && { caption }) };
+          } else {
+            const filePath = resolve(content.startsWith('./') ? content : `./temp_agent/${content}`);            if (existsSync(filePath)) {
+              const fileBuffer = await readFile(filePath);
+              message = { [type]: fileBuffer, ...(caption && { caption }) };
+            } else {
+              return `Error: El archivo no existe en ${filePath}`;
+            }
+          }
         } else {
           return "Error: Tipo de mensaje no soportado.";
         }
         await sock.sendMessage(jid, message, { quoted: msg });
-        return "Mensaje enviado con éxito.";      }
+        return "Mensaje enviado con éxito.";
+      }
       case 'manage_group': {
         const { action, value } = args;
         const jid = msg.chat;
@@ -314,20 +326,22 @@ async function executeTool(toolName, args, { msg, sock }) {
       }
       case 'run_terminal': {
         const { command } = args;
-        const ALLOWED_COMMANDS = ['ffmpeg', 'zip', 'unzip', 'pandoc', 'wkhtmltopdf', 'magick', 'convert', 'tar', 'echo', 'cat', 'touch', 'mkdir', 'rm', 'mv', 'cp'];
-        const baseCmd = command.split(' ')[0];
-        if (!ALLOWED_COMMANDS.includes(baseCmd)) {
-          return "Error: Comando no permitido. Solo puedes usar ffmpeg, zip, unzip, pandoc, wkhtmltopdf, magick, convert, tar, echo, cat, touch, mkdir, rm, mv o cp.";
+        const FORBIDDEN_PATTERNS = [
+          /wget/i, /curl/i, /python/i, /python3/i, /node/i, /bash/i, /sh\s/, 
+          /https?:\/\//i, /rm\s+-rf/i, /sudo/i, /chmod/i, /chown/i
+        ];
+        
+        for (const pattern of FORBIDDEN_PATTERNS) {
+          if (pattern.test(command)) {
+            return `Error: Comando prohibido por seguridad. ${command} no está permitido. Para descargar archivos o hacer peticiones web, usa las herramientas search_web o web_request.`;
+          }
         }
+        
         if (/[|;&`$]/.test(command)) {
           return "Error: Caracteres no permitidos en el comando por seguridad (|, ;, &, `, $).";
         }
-        if (/https?:\/\//.test(command)) {
-          return "Error: No puedes descargar archivos directamente desde la terminal. Usa la herramienta web_request.";
-        }
         
-        if (!existsSync('./temp_agent')) {
-          await mkdir('./temp_agent', { recursive: true });
+        if (!existsSync('./temp_agent')) {          await mkdir('./temp_agent', { recursive: true });
         }
         
         return new Promise((resolve) => {
@@ -341,7 +355,8 @@ async function executeTool(toolName, args, { msg, sock }) {
         const { query } = args;
         try {
           const res = await globalThis.fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`);
-          const data = await res.json();          let result = "Resultados de búsqueda:\n";
+          const data = await res.json();
+          let result = "Resultados de búsqueda:\n";
           if (data.AbstractText) result += `Resumen: ${data.AbstractText}\n`;
           if (data.RelatedTopics && data.RelatedTopics.length > 0) {
             result += "Temas relacionados:\n" + data.RelatedTopics.slice(0, 5).map(t => `- ${t.Text || t.Name}`).join('\n');
@@ -376,7 +391,6 @@ async function executeTool(toolName, args, { msg, sock }) {
 }
 
 const systemPrompt = `Eres Hori-San, un agente IA avanzado basado en Qwen, desarrollado por Isolated Labs.
-
 REGLAS CRÍTICAS DE COMPORTAMIENTO:
 
 1. PACIENCIA: Ejecuta UNA SOLA acción a la vez. Si necesitas hacer múltiples pasos, ejecuta el primero, ESPERA el resultado, y luego continúa con el siguiente paso.
@@ -390,28 +404,49 @@ Ejemplo correcto:
 
 3. RESPUESTA NORMAL: Si NO necesitas usar una herramienta, responde con texto normal. Puedes incluir código en bloques markdown, pero NUNCA incluyas bloques JSON con la clave "tool".
 
-4. NO ALUCINES: NUNCA simules respuestas del sistema como "Tool X does not exists". NUNCA inventes herramientas. Si no puedes hacer algo, explica por qué en texto normal.
-5. PROHIBICIONES:
-   - NO descargues archivos con wget/curl desde la terminal
-   - NO uses python, node, bash en la terminal
-   - NO ejecutes comandos peligrosos (rm -rf, etc.)
+4. ENVÍO DE ARCHIVOS: Cuando termines de crear un archivo que el usuario solicitó (como un ZIP, PDF, imagen, etc.), DEBES usar la herramienta send_message para enviárselo automáticamente. NO esperes a que el usuario te pida el archivo, envíaselo inmediatamente después de crearlo.
+
+Ejemplo de envío de archivo local:
+\`\`\`json
+{"tool": "send_message", "args": {"type": "document", "content": "pagina.zip", "caption": "Aquí tienes el archivo solicitado"}}
+\`\`\`
+
+5. TERMINAL - LO QUE SÍ PUEDES HACER:
+   - Crear archivos con echo, cat, touch
+   - Manipular archivos: mkdir, rm, mv, cp, ls
+   - Crear ZIPs con zip
+   - Crear PDFs con wkhtmltopdf, pandoc
+   - Procesar imágenes/video/audio con ffmpeg, magick, convert
+   - Comprimir/descomprimir con tar, unzip
+
+6. TERMINAL - LO QUE NUNCA PUEDES HACER:
+   - NUNCA uses wget, curl o cualquier comando para descargar archivos
+   - NUNCA ejecutes código con python, python3, node, bash, sh
+   - NUNCA hagas peticiones HTTP desde la terminal
+   - NUNCA uses comandos peligrosos como rm -rf, sudo, chmod, chown
+   - NUNCA incluyas URLs en los comandos de terminal
+
+7. PARA DESCARGAR O BUSCAR EN INTERNET:
+   - Usa SIEMPRE la herramienta search_web para buscar información
+   - Usa SIEMPRE la herramienta web_request para hacer peticiones HTTP o descargar contenido
+   - NUNCA intentes descargar archivos desde la terminal
+
+8. NO ALUCINES: NUNCA simules respuestas del sistema como "Tool X does not exists". NUNCA inventes herramientas. Si no puedes hacer algo, explica por qué en texto normal.
 
 HERRAMIENTAS DISPONIBLES:
 1. send_message: Envía mensajes o archivos
-   args: {"type": "text|image|video|document|audio|sticker", "content": "url_o_texto", "caption": "texto_opcional"}
+   args: {"type": "text|image|video|document|audio|sticker", "content": "url_o_ruta_local", "caption": "texto_opcional"}
+   Para archivos locales: usa solo el nombre del archivo (ej: "pagina.zip") o ruta relativa (ej: "./temp_agent/pagina.zip")
 
 2. manage_group: Gestiona el grupo
    args: {"action": "set_name|set_description|add_participants|remove_participants|promote|demote|lock|unlock", "value": "string_o_array"}
-
-3. run_terminal: Ejecuta comandos seguros
-   Comandos permitidos: ffmpeg, zip, unzip, pandoc, wkhtmltopdf, magick, convert, tar, echo, cat, touch, mkdir, rm, mv, cp
-   Para crear archivos: echo "contenido" > archivo.txt
+3. run_terminal: Ejecuta comandos de manipulación de archivos y procesamiento multimedia
    args: {"command": "string"}
 
 4. search_web: Busca información en internet
    args: {"query": "string"}
 
-5. web_request: Hace peticiones HTTP directas
+5. web_request: Hace peticiones HTTP directas (GET, POST, PUT, DELETE)
    args: {"url": "string", "method": "GET|POST|PUT|DELETE", "headers": {}, "body": "string"}`;
 
 export default {
@@ -439,6 +474,7 @@ export default {
 
     history.push({ role: 'user', content: text });  
     if (history.length > 15) history.shift();  
+
     let groupInfo = '';
     if (msg.chat.endsWith('@g.us')) {
       try {
@@ -452,8 +488,7 @@ export default {
       const statusKey = statusMsg.key;
       let statusText = "ꕥ *Qwen* está procesando tu respuesta como Agente.";
 
-      let tempHistory = [...history]; 
-      let currentText = text;
+      let tempHistory = [...history];       let currentText = text;
       let attempts = 0;
       const MAX_ATTEMPTS = 5;
       let finalResponseSent = false;
@@ -484,11 +519,12 @@ export default {
           tempHistory.push({ role: 'assistant', content: `\`\`\`json\n${JSON.stringify(toolCall)}\n\`\`\`` });
           tempHistory.push({ role: 'user', content: `[Resultado de ${toolCall.tool}]:\n${toolResult}\n\nContinúa con el siguiente paso o responde al usuario.` });
           
-          currentText = `[Sistema: La herramienta ${toolCall.tool} se ejecutó correctamente. Resultado: ${toolResult}\n\nPor favor, procesa este resultado y continúa con el siguiente paso si es necesario, o responde al usuario en texto normal.]`;
+          currentText = `[Sistema: La herramienta ${toolCall.tool} se ejecutó correctamente. Resultado: ${toolResult}\n\nPor favor, procesa este resultado y continúa con el siguiente paso si es necesario, o responde al usuario en texto normal. Si creaste un archivo solicitado, usa send_message para enviárselo al usuario.]`;
           
         } else if (isToolResponse) {
           tempHistory.push({ role: 'assistant', content: responseText });
-          tempHistory.push({ role: 'user', content: `[Sistema: Detecté que intentaste usar una herramienta pero el formato es inválido o la herramienta no existe. Las herramientas válidas son: ${ALLOWED_TOOLS.join(', ')}.\n\nPor favor, responde en texto normal o genera un JSON válido con una herramienta existente.]` });          currentText = "Corrige tu respuesta. Responde en texto normal o usa una herramienta válida.";
+          tempHistory.push({ role: 'user', content: `[Sistema: Detecté que intentaste usar una herramienta pero el formato es inválido o la herramienta no existe. Las herramientas válidas son: ${ALLOWED_TOOLS.join(', ')}.\n\nPor favor, responde en texto normal o genera un JSON válido con una herramienta existente.]` });
+          currentText = "Corrige tu respuesta. Responde en texto normal o usa una herramienta válida.";
           
         } else {
           history.push({ role: 'assistant', content: responseText });  
@@ -501,8 +537,7 @@ export default {
 
       if (!finalResponseSent) {
         await sock.sendMessage(msg.chat, { text: "El agente alcanzó el límite de intentos o no pudo completar la tarea.", edit: statusKey });
-        await msg.react('❌');
-      }
+        await msg.react('❌');      }
 
     } catch (e) {  
       history.pop();  
