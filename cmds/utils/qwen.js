@@ -47,8 +47,8 @@ function cookieString(jar) {
 let cachedJar = null;
 
 async function signin() {
-  if (!QWEN_EMAIL || !QWEN_PASSWORD) {
-    throw new Error('Qwen no está configurado. Define QWEN_EMAIL y QWEN_PASSWORD.');  }
+  if (!QWEN_EMAIL || !QWEN_PASSWORD) {    throw new Error('Qwen no está configurado. Define QWEN_EMAIL y QWEN_PASSWORD.');
+  }
 
   const jar = {};
   const res = await globalThis.fetch(`${BASE}/api/v2/auths/signin`, {
@@ -64,7 +64,11 @@ async function signin() {
   Object.assign(jar, parseCookies(setCookies));
 
   let body = {};
-  try { body = await res.json(); } catch {}
+  try { 
+    body = await res.json(); 
+  } catch (e) {
+    throw new Error(`Qwen signin falló al parsear respuesta: ${e.message}`);
+  }
 
   if (!res.ok || body?.success === false) {
     throw new Error(`Qwen signin falló: ${JSON.stringify(body)}`);
@@ -93,7 +97,6 @@ async function createChat(jar, signal) {
     }),
     signal,
   });
-
   const body = await res.json();
   if (!body?.data?.id) {
     throw new Error(`Qwen createChat falló: ${JSON.stringify(body)}`);
@@ -142,11 +145,11 @@ async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
         },
         extra: { meta: { subChatType: 't2t' } },
         sub_chat_type: 't2t',
-        parent_id: null,
-      },
+        parent_id: null,      },
     ],
     timestamp: Math.floor(Date.now() / 1000),
   };
+
   try {
     const res = await globalThis.fetch(`${BASE}/api/v2/chat/completions?chat_id=${chatId}`, {
       method: 'POST',
@@ -161,48 +164,52 @@ async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
       signal: controller.signal,
     });
 
-    if (!res.ok) {  
-      const text = await res.text();  
-      if (res.status === 401 || res.status === 403) {  
-        cachedJar = null;  
-        throw new Error(`Qwen auth expirado (${res.status}): ${text.slice(0, 200)}`);  
-      }  
-      throw new Error(`Qwen completion falló (${res.status}): ${text.slice(0, 200)}`);  
-    }  
+    if (!res.ok) {
+      const text = await res.text();
+      if (res.status === 401 || res.status === 403) {
+        cachedJar = null;
+        throw new Error(`Qwen auth expirado (${res.status}): ${text.slice(0, 200)}`);
+      }
+      throw new Error(`Qwen completion falló (${res.status}): ${text.slice(0, 200)}`);
+    }
 
-    let thinking = '';  
-    let answer = '';  
-    const decoder = new TextDecoder();  
-    let buffer = '';  
+    let thinking = '';
+    let answer = '';
+    const decoder = new TextDecoder();
+    let buffer = '';
 
-    for await (const chunk of res.body) {  
-      buffer += decoder.decode(chunk, { stream: true });  
-      const lines = buffer.split('\n');  
-      buffer = lines.pop();  
+    for await (const chunk of res.body) {
+      buffer += decoder.decode(chunk, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
 
-      for (const line of lines) {  
-        if (!line.startsWith('data: ')) continue;  
-        const raw = line.slice(6).trim();  
-        if (raw === '[DONE]') break;  
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const raw = line.slice(6).trim();
+        if (raw === '[DONE]') break;
 
-        let parsed;  
-        try { parsed = JSON.parse(raw); } catch { continue; }  
+        let parsed;
+        try { 
+          parsed = JSON.parse(raw); 
+        } catch (e) {
+          continue;
+        }
+        const delta = parsed?.choices?.[0]?.delta;
+        if (!delta) continue;
 
-        const delta = parsed?.choices?.[0]?.delta;  
-        if (!delta) continue;  
-
-        if (delta.phase === 'thinking_summary') {  
-          const thought = delta.extra?.summary_thought?.content?.[0];  
-          if (thought && thought.length > thinking.length) {  
-            const newDelta = thought.slice(thinking.length);  
-            thinking = thought;              if (onChunk) onChunk(newDelta, 'thinking');  
-          }  
-        } else if (delta.phase === 'answer' && delta.content) {  
-          answer += delta.content;  
-          if (onChunk) onChunk(delta.content, 'answer');  
-        }  
-      }  
-    }  
+        if (delta.phase === 'thinking_summary') {
+          const thought = delta.extra?.summary_thought?.content?.[0];
+          if (thought && thought.length > thinking.length) {
+            const newDelta = thought.slice(thinking.length);
+            thinking = thought;
+            if (onChunk) onChunk(newDelta, 'thinking');
+          }
+        } else if (delta.phase === 'answer' && delta.content) {
+          answer += delta.content;
+          if (onChunk) onChunk(delta.content, 'answer');
+        }
+      }
+    }
 
     return { text: answer.trim(), thinking: thinking.trim() };
 
@@ -218,33 +225,39 @@ async function qwen(chatKey, prompt, options = {}) {
     try {
       const jar = await ensureAuth();
 
-      if (!global.qwenGlobalChatIds[chatKey]) {  
-        global.qwenGlobalChatIds[chatKey] = await createChat(jar, options.signal);  
-      }  
+      if (!global.qwenGlobalChatIds[chatKey]) {
+        global.qwenGlobalChatIds[chatKey] = await createChat(jar, options.signal);
+      }
 
-      const result = await streamCompletion(global.qwenGlobalChatIds[chatKey], prompt, jar, null, options.signal);  
+      const result = await streamCompletion(
+        global.qwenGlobalChatIds[chatKey], 
+        prompt, 
+        jar, 
+        null, 
+        options.signal
+      );
 
-      return {  
-        status: true,  
-        text: result.text,  
-        thinking: result.thinking,  
-      };  
-    } catch (err) {  
-      if (err?.name === 'AbortError') throw err;  
+      return {
+        status: true,
+        text: result.text,
+        thinking: result.thinking,
+      };
+    } catch (err) {
+      if (err?.name === 'AbortError') throw err;
+      const isAuthError =
+        err.message?.includes('401') ||
+        err.message?.includes('403') ||
+        err.message?.includes('auth') ||
+        err.message?.includes('login');
 
-      const isAuthError =  
-        err.message?.includes('401') ||  
-        err.message?.includes('403') ||  
-        err.message?.includes('auth') ||  
-        err.message?.includes('login');  
+      if (isAuthError && attempt < MAX_RETRIES) {
+        cachedJar = null;
+        global.qwenGlobalChatIds[chatKey] = null;
+        continue;
+      }
 
-      if (isAuthError && attempt < MAX_RETRIES) {  
-        cachedJar = null;  
-        global.qwenGlobalChatIds[chatKey] = null;  
-        continue;  
-      }  
-
-      throw err;      }
+      throw err;
+    }
   }
 }
 
@@ -259,24 +272,27 @@ function extractToolCall(text) {
       if (parsed.tool && typeof parsed.tool === 'string' && parsed.args) {
         return { toolCall: { tool: parsed.tool, args: parsed.args }, isToolResponse: true };
       }
-    } catch (e) {}
+    } catch (e) {
+      // Si falla el parseo, continuamos
+    }
   }
   
-  const jsonMatch = text.match(/\{[\s\S]*?"tool"[\s\S]*?\}/);
+  const jsonMatch = text.match(/\{[\s\S]*?"tool"[\s\S]*?"args"[\s\S]*?\}/);
   if (jsonMatch) {
     try {
       const parsed = JSON.parse(jsonMatch[0]);
       if (parsed.tool && typeof parsed.tool === 'string' && parsed.args) {
         return { toolCall: { tool: parsed.tool, args: parsed.args }, isToolResponse: true };
       }
-    } catch (e) {}
+    } catch (e) {
+      // Si falla el parseo, continuamos
+    }
   }
   
   if (text.includes('"tool"') && text.includes('"args"')) {
     return { toolCall: null, isToolResponse: true };
   }
-  
-  return { toolCall: null, isToolResponse: false };
+    return { toolCall: null, isToolResponse: false };
 }
 
 async function executeTool(toolName, args, { msg, sock, statusKey = null }) {
@@ -293,7 +309,8 @@ async function executeTool(toolName, args, { msg, sock, statusKey = null }) {
           if (content.startsWith('http://') || content.startsWith('https://')) {
             message = { [type]: { url: content }, ...(caption && { caption }) };
           } else {
-            const filePath = resolve(content.startsWith('./') ? content : `./temp_agent/${content}`);            
+            const filePath = resolve(content.startsWith('./') ? content : `./temp_agent/${content}`);
+            
             if (existsSync(filePath)) {
               const fileBuffer = await readFile(filePath);
               message = { [type]: fileBuffer, ...(caption && { caption }) };
@@ -304,8 +321,13 @@ async function executeTool(toolName, args, { msg, sock, statusKey = null }) {
         } else {
           return "Error: Tipo de mensaje no soportado.";
         }
-        await sock.sendMessage(jid, message, { quoted: msg });
-        return "Mensaje enviado con éxito.";
+        
+        try {
+          await sock.sendMessage(jid, message, { quoted: msg });
+          return "Mensaje enviado con éxito.";
+        } catch (sendError) {
+          return `Error al enviar mensaje: ${sendError.message}`;
+        }
       }
       
       case 'read_messages': {
@@ -319,8 +341,7 @@ async function executeTool(toolName, args, { msg, sock, statusKey = null }) {
         let chatMessages;
         if (store.messages instanceof Map) {
           chatMessages = store.messages.get(jid);
-        } else if (store.messages[jid]) {
-          chatMessages = store.messages[jid];
+        } else if (store.messages[jid]) {          chatMessages = store.messages[jid];
         }
         
         if (!chatMessages) {
@@ -343,7 +364,7 @@ async function executeTool(toolName, args, { msg, sock, statusKey = null }) {
             if (msgContent.conversation) body = msgContent.conversation;
             else if (msgContent.extendedTextMessage?.text) body = msgContent.extendedTextMessage.text;
             else if (msgContent.imageMessage?.caption) body = `[Imagen] ${msgContent.imageMessage.caption}`;
-            else if (msgContent.videoMessage?.caption) body = `[Video] ${msgContent.videoMessage.caption}`;            
+            else if (msgContent.videoMessage?.caption) body = `[Video] ${msgContent.videoMessage.caption}`;
             else if (msgContent.documentMessage?.caption) body = `[Documento] ${msgContent.documentMessage.caption}`;
             else if (msgContent.audioMessage) body = '[Audio]';
             else if (msgContent.stickerMessage) body = '[Sticker]';
@@ -369,16 +390,15 @@ async function executeTool(toolName, args, { msg, sock, statusKey = null }) {
         const ALLOWED_METHODS = [
           'groupMetadata', 'groupUpdateSubject', 'groupUpdateDescription',
           'groupParticipantsUpdate', 'groupSettingUpdate', 'groupInviteCode',
-          'groupRevokeInvite', 'groupGetInviteCode', 'groupLeave',
-          'profilePictureUrl', 'fetchStatus', 'presenceSubscribe',
+          'groupRevokeInvite', 'groupGetInviteCode', 'groupLeave',          'profilePictureUrl', 'fetchStatus', 'presenceSubscribe',
           'sendPresenceUpdate', 'readMessages', 'chatModify',
           'getChat', 'loadMessage', 'fetchGroupMetadata',
-          'contacts', 'getBusinessProfile', 'query', 'blockUser', 'unblockUser',        
-          'updateBlockStatus', 'editMessage', 'deleteMessage', 
+          'contacts', 'getBusinessProfile', 'query', 'blockUser', 'unblockUser',
+          'updateBlockStatus', 'editMessage', 'deleteMessage',
         ];
         
         const ADMIN_ONLY_METHODS = [
-          'groupUpdateSubject', 'groupUpdateDescription', 
+          'groupUpdateSubject', 'groupUpdateDescription',
           'groupParticipantsUpdate', 'groupSettingUpdate',
           'groupRevokeInvite', 'groupLeave'
         ];
@@ -410,14 +430,16 @@ async function executeTool(toolName, args, { msg, sock, statusKey = null }) {
         if (ADMIN_ONLY_METHODS.includes(method) && msg.chat.endsWith('@g.us')) {
           try {
             const metadata = await sock.groupMetadata(msg.chat);
-            const isAdmin = metadata.participants.some(p =>               p.id === msg.sender && (p.admin === 'admin' || p.admin === 'superadmin')
+            const isAdmin = metadata.participants.some(p =>
+              p.id === msg.sender && (p.admin === 'admin' || p.admin === 'superadmin')
             );
             if (!isAdmin) {
               return `Error: No tienes permisos de admin para ejecutar ${method} en este grupo.`;
             }
-          } catch (e) {}
-        }
-        
+          } catch (e) {
+            // Continuamos si falla la verificación de admin
+          }
+        }        
         try {
           const params = Array.isArray(parameters) ? parameters : [parameters];
           const result = await sock[method](...params);
@@ -431,7 +453,7 @@ async function executeTool(toolName, args, { msg, sock, statusKey = null }) {
         const { command } = args;
         const FORBIDDEN_PATTERNS = [
           /wget\s/i, /curl\s/i,
-          /rm\s+-rf\s+\//i, /sudo\s/i, 
+          /rm\s+-rf\s+\//i, /sudo\s/i,
           />\s*\/etc\//i, />\s*\/bin\//i, />\s*\/usr\//i
         ];
         
@@ -456,22 +478,24 @@ async function executeTool(toolName, args, { msg, sock, statusKey = null }) {
           });
         });
       }
+      
       case 'search_web': {
         const { query } = args;
         try {
-          const res = await globalThis.fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`);          const data = await res.json();
+          const res = await globalThis.fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`);
+          const data = await res.json();
           let result = "Resultados de búsqueda:\n";
           if (data.AbstractText) result += `Resumen: ${data.AbstractText}\n`;
           if (data.RelatedTopics && data.RelatedTopics.length > 0) {
             result += "Temas relacionados:\n" + data.RelatedTopics.slice(0, 5).map(t => `- ${t.Text || t.Name}`).join('\n');
-          } else {
-             result += "No se encontraron resultados rápidos. Usa la herramienta web_request para buscar en internet si necesitas más detalles.";
+          } else {            result += "No se encontraron resultados rápidos. Usa la herramienta web_request para buscar en internet si necesitas más detalles.";
           }
           return result;
         } catch (e) {
-          return "Error al buscar en internet. Intenta usar web_request.";
+          return `Error al buscar en internet: ${e.message}. Intenta usar web_request.`;
         }
       }
+      
       case 'web_request': {
         const { url, method = 'GET', headers = {}, body } = args;
         try {
@@ -486,12 +510,14 @@ async function executeTool(toolName, args, { msg, sock, statusKey = null }) {
           return `Error en la petición: ${e.message}`;
         }
       }
+      
       case 'edit_message': {
         const { text, key } = args;
         if (!text) return "Error: Falta el texto para editar.";
         const msgKey = key || statusKey;
         if (!msgKey) return "Error: No hay mensaje para editar. Especifica 'key' o edita después de enviar un mensaje.";
         const jid = msgKey.remoteJid || msg.chat;
+        
         try {
           await sock.sendMessage(jid, { text, edit: msgKey });
           return "Mensaje editado con éxito.";
@@ -499,14 +525,19 @@ async function executeTool(toolName, args, { msg, sock, statusKey = null }) {
           return `Error al editar mensaje: ${e.message}`;
         }
       }
+      
       case 'download_audio': {
         const { query } = args;
-        return await downloadAudio(query);
+        try {
+          return await downloadAudio(query);
+        } catch (e) {
+          return `Error al descargar audio: ${e.message}`;
+        }
       }
+      
       default:
         return "Herramienta desconocida.";
-    }
-  } catch (error) {
+    }  } catch (error) {
     return `Error al ejecutar la herramienta: ${error.message}`;
   }
 }
@@ -525,7 +556,8 @@ REGLAS CRÍTICAS DE COMPORTAMIENTO:
 
 Ejemplo correcto:
 \`\`\`json
-{"tool": "run_terminal", "args": {"command": "echo 'hola' > archivo.txt"}}\`\`\`
+{"tool": "run_terminal", "args": {"command": "echo 'hola' > archivo.txt"}}
+\`\`\`
 
 3. RESPUESTA NORMAL: Si NO necesitas usar una herramienta, responde con texto normal. Puedes incluir código en bloques markdown, pero NUNCA incluyas bloques JSON con la clave "tool".
 
@@ -554,8 +586,7 @@ Ejemplo correcto:
       args: {"method": "nombre_metodo", "parameters": [...]}
       
       MÉTODOS PRINCIPALES:
-      - groupMetadata(jid): Info COMPLETA del grupo (subject, desc, participants, etc.)
-      - groupUpdateSubject/Description: Cambia nombre y descripción
+      - groupMetadata(jid): Info COMPLETA del grupo (subject, desc, participants, etc.)      - groupUpdateSubject/Description: Cambia nombre y descripción
       - groupParticipantsUpdate: Agrega/elimina/promueve/degrada participantes
       - profilePictureUrl: Obtiene fotos de perfil
       - fetchStatus: Obtiene estado de contactos
@@ -578,7 +609,8 @@ Ejemplo correcto:
    - Para descargar música MP3 de YouTube, usa download_audio seguido de send_message
 
 10. DECISIONES INTELIGENTES:
-   - Piensa qué método es más útil para el usuario   - Para ver la descripción de un grupo: usa sock_execute con groupMetadata
+   - Piensa qué método es más útil para el usuario
+   - Para ver la descripción de un grupo: usa sock_execute con groupMetadata
    - Para ver mensajes anteriores: usa read_messages
    - Si un método falla, intenta otro enfoque o explica al usuario por qué
 
@@ -603,7 +635,6 @@ HERRAMIENTAS DISPONIBLES:
 
 6. search_web: Busca información en internet
    args: {"query": "string"}
-
 7. web_request: Hace peticiones HTTP directas
    args: {"url": "string", "method": "GET|POST|PUT|DELETE", "headers": {}, "body": "string"}
 
@@ -618,29 +649,33 @@ export default {
   run: async ({ msg, sock, args, usedPrefix, command }) => {
     const text = args.join(' ').trim();
 
-    if (!text) {  
-      return msg.reply(`《✧》 Escriba una *petición* para que *Qwen* le responda.`);  
-    }  
+    if (!text) {
+      return msg.reply(`《✧》 Escriba una *petición* para que *Qwen* le responda.`);
+    }
 
-    const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';  
-    const settings = global.db.data.settings[botId];  
-    const user = global.db.data.users[msg.sender];  
-    const username = user?.name || 'usuario';  
-    const botname = settings.botname || 'Bot';  
+    const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+    const settings = global.db.data.settings[botId];
+    const user = global.db.data.users[msg.sender];
+    const username = user?.name || 'usuario';
+    const botname = settings?.botname || 'Bot';
 
     const userHistoryKey = msg.sender;
-    if (!global.qwenHistory[userHistoryKey]) global.qwenHistory[userHistoryKey] = [];  
-    const history = global.qwenHistory[userHistoryKey];  
-    // mensage
+    if (!global.qwenHistory[userHistoryKey]) global.qwenHistory[userHistoryKey] = [];
+    const history = global.qwenHistory[userHistoryKey];
+    
+    history.push({ role: 'user', content: text });
+    if (history.length > 15) history.shift();
+    
     const userChatKey = `${msg.chat}_${msg.sender}`;
     
-    history.push({ role: 'user', content: text });      if (history.length > 15) history.shift();  
-    try {  
-      const statusMsg = await sock.sendMessage(msg.chat, { text: "ꕥ *Qwen* está procesando tu respuesta como Agente." }, { quoted: msg });
-      const statusKey = statusMsg.key;
-      let statusText = "ꕥ *Qwen* está procesando tu respuesta como Agente.";
-
-      let tempHistory = [...history]; 
+    let statusMsg;
+    let statusKey;
+    
+    try {
+      statusMsg = await sock.sendMessage(msg.chat, { text: "ꕥ *Qwen* está procesando tu respuesta como Agente." }, { quoted: msg });
+      statusKey = statusMsg.key;
+      
+      let tempHistory = [...history];
       let currentText = text;
       let finalResponseSent = false;
       const ALLOWED_TOOLS = ['send_message', 'edit_message', 'read_messages', 'sock_execute', 'run_terminal', 'search_web', 'web_request', 'download_audio'];
@@ -650,7 +685,6 @@ export default {
       
       const toolUsageHistory = [];
       const MAX_REPEATED_ACTIONS = 5;
-
       while (true) {
         if (Date.now() - startTime > MAX_TIME_MS) {
           break;
@@ -658,13 +692,15 @@ export default {
         
         const historyString = tempHistory
           .map(m => `${m.role === 'user' ? username : botname}: ${m.content}`)
-          .join('\n\n');  
+          .join('\n\n');
           
-        const fullPrompt = `${systemPrompt}\n\n[Historial de Conversación]\n${historyString}\n\n[Usuario]\n${currentText}`;  
+        const fullPrompt = `${systemPrompt}\n\n[Historial de Conversación]\n${historyString}\n\n[Usuario]\n${currentText}`;
 
-        const result = await qwen(userChatKey, fullPrompt);  
+        const result = await qwen(userChatKey, fullPrompt);
 
-        if (!result?.status || !result.text) break;  
+        if (!result?.status || !result.text) {
+          throw new Error('Qwen no devolvió una respuesta válida');
+        }
 
         const responseText = result.text.trim();
         const { toolCall, isToolResponse } = extractToolCall(responseText);
@@ -676,7 +712,10 @@ export default {
           
           if (repeatCount >= MAX_REPEATED_ACTIONS) {
             tempHistory.push({ role: 'assistant', content: responseText });
-            tempHistory.push({ role: 'user', content: `[Sistema: Has intentado la misma acción ${repeatCount} veces sin éxito. Por favor, intenta un enfoque completamente diferente o explica al usuario por qué no puedes completar la tarea.]` });
+            tempHistory.push({ 
+              role: 'user', 
+              content: `[Sistema: Has intentado la misma acción ${repeatCount} veces sin éxito. Por favor, intenta un enfoque completamente diferente o explica al usuario por qué no puedes completar la tarea.]` 
+            });
             currentText = "Estás en un bucle. Intenta algo diferente.";
             continue;
           }
@@ -692,12 +731,20 @@ export default {
           
         } else if (isToolResponse) {
           tempHistory.push({ role: 'assistant', content: responseText });
-          tempHistory.push({ role: 'user', content: `[Sistema: Intentaste usar una herramienta pero el formato es inválido o no existe. Herramientas válidas: ${ALLOWED_TOOLS.join(', ')}.\n\nResponde en texto normal o genera un JSON válido.]` });
+          tempHistory.push({ 
+            role: 'user', 
+            content: `[Sistema: Intentaste usar una herramienta pero el formato es inválido o no existe. Herramientas válidas: ${ALLOWED_TOOLS.join(', ')}.\n\nResponde en texto normal o genera un JSON válido.]`           });
           currentText = "Corrige tu respuesta.";
           
         } else {
-          history.push({ role: 'assistant', content: responseText });  
-          await sock.sendMessage(msg.chat, { text: responseText, edit: statusKey });  
+          history.push({ role: 'assistant', content: responseText });
+          
+          try {
+            await sock.sendMessage(msg.chat, { text: responseText, edit: statusKey });
+          } catch (editError) {
+            await sock.sendMessage(msg.chat, { text: responseText }, { quoted: msg });
+          }
+          
           await msg.react('✔️');
           finalResponseSent = true;
           break;
@@ -705,15 +752,28 @@ export default {
       }
 
       if (!finalResponseSent) {
-        await sock.sendMessage(msg.chat, { text: "El agente tardó demasiado tiempo en completar la tarea o se quedó en un bucle.", edit: statusKey });
+        try {
+          await sock.sendMessage(msg.chat, { text: "El agente tardó demasiado tiempo en completar la tarea o se quedó en un bucle.", edit: statusKey });
+        } catch (editError) {
+          await sock.sendMessage(msg.chat, { text: "El agente tardó demasiado tiempo en completar la tarea o se quedó en un bucle." }, { quoted: msg });
+        }
         await msg.react('❌');
       }
 
-    } catch (e) {  
-      history.pop();  
-      await msg.reply(  
-        `> Ocurrió un error al ejecutar el comando *${usedPrefix + command}*.\n> [Error: *${e.message}*]`  
-      );  
+    } catch (e) {
+      if (statusMsg && statusKey) {
+        try {
+          await sock.sendMessage(msg.chat, { 
+            text: `> Ocurrió un error al ejecutar el comando *${usedPrefix + command}*.\n> [Error: *${e.message}*]`,
+            edit: statusKey
+          });
+        } catch (editError) {
+          await msg.reply(`> Ocurrió un error al ejecutar el comando *${usedPrefix + command}*.\n> [Error: *${e.message}*]`);
+        }
+      } else {
+        await msg.reply(`> Ocurrió un error al ejecutar el comando *${usedPrefix + command}*.\n> [Error: *${e.message}*]`);
+      }
+      await msg.react('❌');
     }
   },
 };
