@@ -41,7 +41,7 @@ console.log(chalk.magentaBright('\n❀ Iniciando...'))
   align: 'center',           
   gradient: ['red', 'blue'] 
 })
-  say('Made with love by Destroy', {
+  say('YO SOY YO', {
   font: 'console',
   align: 'center',
   gradient: ['blue', 'magenta']
