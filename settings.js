@@ -9,8 +9,8 @@ global.dev = "Yo Soy Yo";
 global.links = {
   api: 'https://api.yuki-wabot.my.id',
   channel: "https://whatsapp.com/channel/0029Val9ZCp1SWszvD7jUx1B",
-  github: "https://github.com/IsolatedLabs",
-  gmail: "isolatedlabs.cn@gmail.com"
+  github: "https://github.com/Andresv27728",
+  gmail: ""
 }
 global.my = {
   ch1: '120363399729727124@newsletter'
