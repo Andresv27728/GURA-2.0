@@ -3,9 +3,9 @@ import chalk from "chalk";
 import { fileURLToPath } from "url";
 
 global.botNumber = '';
-global.owner = ['51921826291' , '573133374132', '51928616320'];
+global.owner = ['573133374132'];
 
-global.dev = ": ̗̀「𝐈𝐬𝐨𝐥𝐚𝐭𝐞𝐝𝐋𝐚𝐛𝐬」";
+global.dev = "Yo Soy Yo";
 global.links = {
   api: 'https://api.yuki-wabot.my.id',
   channel: "https://whatsapp.com/channel/0029Val9ZCp1SWszvD7jUx1B",
