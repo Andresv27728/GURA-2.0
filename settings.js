@@ -8,7 +8,7 @@ global.owner = ['573133374132'];
 global.dev = "Yo Soy Yo";
 global.links = {
   api: 'https://api.yuki-wabot.my.id',
-  channel: "https://whatsapp.com/channel/0029Val9ZCp1SWszvD7jUx1B",
+  channel: "https://whatsapp.com/channel/0029VbAmMiM96H4KgBHZUn1z",
   github: "https://github.com/Andresv27728",
   gmail: ""
 }
