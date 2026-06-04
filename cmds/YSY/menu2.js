@@ -82,16 +82,19 @@ export default {
       const fkontak = (await makeFkontak()) || msg
 
       // 📚 CATEGORÍAS
+      // Agrupar los comandos por categoría leyendo global.comandos.
+      // global.comandos es un Map donde la key es el nombre del comando
+      // y el value contiene metadata (entre ellas `category`).
       let categories = {}
-      Object.values(global.comandos || {})
-        .filter(p => p?.category)
-        .forEach(plugin => {
-          const cat = plugin.category || 'Otros'
-          if (!categories[cat]) categories[cat] = []
-          if (plugin.command) {
-            categories[cat].push(...plugin.command)
-          }
-        })
+      const comandosMap = global.comandos instanceof Map ? global.comandos : new Map(Object.entries(global.comandos || {}))
+      for (const [cmdName, data] of comandosMap) {
+        const cat = data?.category || 'Otros'
+        if (!categories[cat]) categories[cat] = []
+        // Añadir el nombre del comando (asegurando no duplicados)
+        if (!categories[cat].includes(cmdName)) categories[cat].push(cmdName)
+      }
+      // Ordenar categorías y comandos para una presentación consistente
+      for (const k of Object.keys(categories)) categories[k].sort((a, b) => a.localeCompare(b))
 
       // ❄️ Categoría seleccionada
       if (args[0] && categories[args[0]]) {
