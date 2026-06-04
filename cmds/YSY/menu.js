@@ -63,7 +63,7 @@ async function makeFkontak() {
 }
 
 export default {
-  command: ['menu2'],
+  command: ['menu'],
   category: 'main',
   description: 'Menú principal del bot.',
   run: async ({ msg, sock, args }) => {
@@ -157,7 +157,7 @@ ${border}`
       const rows = Object.keys(categories).map(cat => ({
         title: `${cat}`,
         description: `Comandos de ${cat}`,
-        id: `.menu2 ${cat}`
+        id: `.menu ${cat}`
       }))
 
       const interactiveMessage = {
