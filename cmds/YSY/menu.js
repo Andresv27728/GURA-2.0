@@ -75,8 +75,8 @@ export default {
       global.idcanal = '120363399729727124@newsletter'
 
       const senkuVideos = [
-        "https://files.catbox.moe/vgmwfj.mp4",
-        "https://files.catbox.moe/vgmwfj.mp4"
+        "https://raw.githubusercontent.com/Andresv27728/dtbs/main/SSYouTube.online_blue horizon!! - Gawr Gura_1080p.mp4",
+        "https://raw.githubusercontent.com/Andresv27728/dtbs/main/SSYouTube.online_blue horizon!! - Gawr Gura_1080p.mp4"
       ]
       const randomVideo = senkuVideos[Math.floor(Math.random() * senkuVideos.length)]
       const fkontak = (await makeFkontak()) || msg
