@@ -307,6 +307,16 @@ export async function smsg(sock, msg, store) {
     // Prefer the raw selected identifiers from interactive replies (selectedRowId, selectedButtonId, selectedId)
     // so that command parsing in main.js can detect menu/list selections which usually send an id like ".menu Category".
     msg.text = msg.msg?.text || msg.msg?.caption || msg.msg?.selectedButtonId || msg.msg?.singleSelectReply?.selectedRowId || msg.msg?.selectedId || msg.message?.conversation || msg.msg?.contentText || msg.msg?.selectedDisplayText || msg.msg?.title || '';
+
+    // Debug log for interactive replies to inspect payloads when a button or list row is selected.
+    try {
+      const selRow = msg.msg?.singleSelectReply?.selectedRowId;
+      const selBtn = msg.msg?.selectedButtonId;
+      const selId = msg.msg?.selectedId;
+      if (selRow || selBtn || selId) {
+        console.log('[interactive-reply] selectedRowId=%s selectedButtonId=%s selectedId=%s -> msg.text=%s', selRow || '', selBtn || '', selId || '', msg.text || '');
+      }
+    } catch (e) { /* ignore logging errors */ }
     const hasChatPrefixOverride = msg.isGroup && chatSetting.prefix !== null && chatSetting.prefix !== undefined;
     const activePrefixSource = hasChatPrefixOverride ? chatSetting.prefix : botSetting.prefix;
     const activePrefixes = normalizePrefixes(activePrefixSource);
