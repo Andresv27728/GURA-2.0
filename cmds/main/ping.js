@@ -85,7 +85,7 @@ export default {
     const totalExec = Math.round(performance.now() - execStart)
 
     const botId = sock.user?.id?.split(':')[0] + '@s.whatsapp.net'
-    const namebot = global.db?.data?.settings?.[botId]?.namebot || 'Hory'
+    const namebot = global.db?.data?.settings?.[botId]?.namebot || 'Gura'
 
     const tableData = [
       ['Ida y vuelta WA', `${waRoundtrip} ms`],

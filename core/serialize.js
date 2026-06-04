@@ -230,6 +230,13 @@ export function parseMention(text = '') {
 export async function smsg(sock, msg, store) {
   const botId = sock?.user?.id.split(':')[0] + '@s.whatsapp.net' || '';
   const botSetting = global.db.data.settings[botId] || {};
+  const chatSetting = global.db.data.chats?.[msg.chat] || {};
+  const normalizePrefixes = (value) => {
+    if (value == null || value === 1) return [];
+    if (Array.isArray(value)) return [...new Set(value.filter(Boolean))];
+    if (typeof value === 'string') return splitter.splitGraphemes(value).filter(Boolean);
+    return [];
+  };
   if (!sock.decodeJid) {
     sock.decodeJid = (jid) => {
       if (!jid) return jid;
@@ -298,15 +305,28 @@ export async function smsg(sock, msg, store) {
     };
     msg.mentionedJid = rawMentioned.map(resolveMentionJid).filter(Boolean);
     msg.text = msg.msg?.text || msg.msg?.caption || msg.message?.conversation || msg.msg?.contentText || msg.msg?.selectedDisplayText || msg.msg?.title || '';
-    let activePrefixes = [];
-    if (botSetting.prefix === 1) activePrefixes = [];
-    else if (Array.isArray(botSetting.prefix)) activePrefixes = botSetting.prefix;
-    else if (typeof botSetting.prefix === 'string') activePrefixes = splitter.splitGraphemes(botSetting.prefix);
-    else activePrefixes = ['#', '/', '.', '!'];
+    const hasChatPrefixOverride = msg.isGroup && chatSetting.prefix !== null && chatSetting.prefix !== undefined;
+    const activePrefixSource = hasChatPrefixOverride ? chatSetting.prefix : botSetting.prefix;
+    const activePrefixes = normalizePrefixes(activePrefixSource);
+    const allowBarePrefix = activePrefixSource === 1 || (!hasChatPrefixOverride && activePrefixes.length > 0);
     msg.usedPrefix = '';
-    for (const p of activePrefixes) { if (msg.body?.startsWith(p)) { msg.usedPrefix = p; break; } }
-    msg.command = msg.body && msg.body.replace(msg.usedPrefix, '').trim().split(/ +/).shift();
-    msg.args = msg.body?.trim().replace(new RegExp('^' + (msg.usedPrefix || '').replace(/[.*=+:\-?^${}()|[\]\\]|\s/g, '\\$&'), 'i'), '').replace(msg.command, '').split(/ +/).filter((a) => a) || [];
+    for (const p of [...activePrefixes].sort((a, b) => b.length - a.length)) {
+      if (msg.body?.startsWith(p)) { msg.usedPrefix = p; break; }
+    }
+    if (!msg.usedPrefix && !allowBarePrefix) {
+      msg.command = '';
+      msg.args = [];
+    } else {
+      const rawCommand = msg.body && msg.body.replace(msg.usedPrefix, '').trim().split(/ +/).shift();
+      const normalizedCommand = (rawCommand || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (!msg.usedPrefix && allowBarePrefix && normalizedCommand && !global.comandos?.has(normalizedCommand)) {
+        msg.command = '';
+        msg.args = [];
+      } else {
+        msg.command = normalizedCommand;
+        msg.args = msg.body?.trim().replace(new RegExp('^' + (msg.usedPrefix || '').replace(/[.*=+:\-?^${}()|[\]\\]|\s/g, '\\$&'), 'i'), '').replace(rawCommand || '', '').split(/ +/).filter((a) => a) || [];
+      }
+    }
     msg.device = getDevice(msg.id);
     msg.expiration = msg.msg?.contextInfo?.expiration || msg?.metadata?.ephemeralDuration || sock?.messages?.[msg.chat]?.array?.slice(-1)[0]?.metadata?.ephemeralDuration || 0;
     msg.timestamp = (typeof msg.messageTimestamp === 'number' ? msg.messageTimestamp : msg.messageTimestamp?.low || msg.messageTimestamp?.high) || (msg.msg?.timestampMs * 1000);

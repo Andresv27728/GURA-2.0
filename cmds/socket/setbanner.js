@@ -34,7 +34,7 @@ export default {
     }
     if (value && value.startsWith('http')) {
       global.db.data.settings[idBot].banner = value
-      return msg.reply(`✿ Se ha actualizado el banner de *${config.namebot || 'Bot'}*!`)
+      return msg.reply(`✿ Se ha actualizado el banner de *${config.namebot || 'Gura'}*!`)
     }
     const q = msg.quoted || msg
     const mime = (q.msg || q).mimetype || q.mediaType || ''
@@ -45,6 +45,6 @@ export default {
     if (!media) return msg.reply('✎ No se pudo descargar la imagen.')
     const link = await uploadImage(media, mime)
     global.db.data.settings[idBot].banner = link
-    return msg.reply(`✿ Se ha actualizado el banner de *${config.namebot || 'Bot'}*!`)
+    return msg.reply(`✿ Se ha actualizado el banner de *${config.namebot || 'Gura'}*!`)
   }
 }

@@ -1,38 +1,49 @@
 import GraphemeSplitter from 'grapheme-splitter';
 
+const splitter = new GraphemeSplitter();
+const escapeReplyPrefix = (value) => value ? `\`${value}\`` : '`sin prefijo`';
+
 export default {
   command: ['setprefix', 'setbotprefix'],
   category: 'socket',
-  description: 'Cambiar el prefijo del bot.',
-  run: async ({ msg, sock, args, usedPrefix, command }) => {
+  description: 'Configura el prefijo del bot por grupo o el modo global.',
+  run: async ({ msg, sock, args, usedPrefix, command, isAdmins, isOwner }) => {
     const idBot = sock.user.id.split(':')[0] + '@s.whatsapp.net';
-    let config = global.db.data.settings[idBot] || {};
-    const isOwner2 = [idBot, ...(config.owner ? [config.owner] : []), ...global.owner.map(num => num + '@s.whatsapp.net')].includes(msg.sender);
-    if (!isOwner2) return sock.reply(msg.chat, global.mess.socket, msg);
+    const config = global.db.data.settings[idBot] || {};
+    const canUse = isOwner || (msg.isGroup && isAdmins);
+    if (!canUse) return sock.reply(msg.chat, global.mess.socket, msg);
+
     const value = args.join(' ').trim();
-    const defaultPrefix = ["#", "/", "!", "."];
     if (!value) {
-      const lista = config.prefix === 1 ? '`sin prefijos`' : (Array.isArray(config.prefix) ? config.prefix : [config.prefix || '/']).map(p => `\`${p}\``).join(', ');
-      return msg.reply(`❀ Por favor, elige cualquiera de los siguientes métodos de prefijos.\n\n> *○ Only-Prefix* » ${usedPrefix + command} *.*\n> *○ Multi-Prefix* » ${usedPrefix + command} *!/.#*\n> *○ No-Prefix* » ${usedPrefix + command} *noprefix*\n\nꕥ Actualmente se está usando: ${lista}`);
+      return msg.reply(
+        `❀ Uso de prefijos:\n\n` +
+        `> *• Global* » *${usedPrefix + command} global*\n` +
+        `> *• Grupo* » *${usedPrefix + command} !*\n` +
+        `> *• Volver a sin prefijo en grupo* » *${usedPrefix}delprefix*\n\n` +
+        `ꕥ Prefijo global actual: ${escapeReplyPrefix(config.prefix === 1 ? '' : (Array.isArray(config.prefix) ? config.prefix.join(' ') : config.prefix))}`
+      );
     }
-    if (value.toLowerCase() === 'reset') {
-      global.db.data.settings[idBot].prefix = defaultPrefix;
-      return sock.reply(msg.chat, `❀ Se han restaurado los prefijos predeterminados: *${defaultPrefix.join(' ')}*`, msg);
+
+    if (value.toLowerCase() === 'global') {
+      global.db.data.settings[idBot].prefix = ['.', '#', '/', '!'];
+      return msg.reply('❀ El bot ahora responde sin prefijo y tambien con los prefijos *./#/*! de forma global.');
     }
-    if (value.toLowerCase() === 'noprefix') {
+
+    if (value.toLowerCase() === 'default' || value.toLowerCase() === 'reset') {
       global.db.data.settings[idBot].prefix = 1;
-      return msg.reply(`❀ Se cambio al modo sin prefijos para el Socket correctamente\n> Ahora el bot responderá a comandos *sin prefijos*.`);
+      return msg.reply('❀ El bot global volvió a modo sin prefijo.');
     }
-    const splitter = new GraphemeSplitter();
-    const graphemes = splitter.splitGraphemes(value);
-    const lista = [];
-    for (const g of graphemes) {
-      if (/^[a-zA-Z]+$/.test(g)) continue;
-      if (!lista.includes(g)) lista.push(g);
+
+    if (!msg.isGroup) {
+      return msg.reply(`✐ El prefijo por grupo solo puede configurarse dentro de un grupo.\n> Para modo global usa *${usedPrefix + command} global*`);
     }
-    if (lista.length === 0) return sock.reply(msg.chat, 'ꕥ No se detectaron prefijos válidos. Debes incluir al menos un símbolo o emoji.', msg);
-    if (lista.length > 6) return sock.reply(msg.chat, 'ꕥ Máximo 6 prefijos permitidos.', msg);
-    global.db.data.settings[idBot].prefix = lista;
-    return sock.reply(msg.chat, `❀ Se cambió el prefijo del Socket a *${lista.join(' ')}* correctamente.`, msg);
+
+    const symbols = splitter.splitGraphemes(value).filter(g => g && !/^[a-zA-Z0-9\s]+$/.test(g));
+    const prefix = symbols[0];
+    if (!prefix || /^\s+$/.test(prefix)) return msg.reply('✎ Debes escribir un prefijo valido.');
+    if (prefix.toLowerCase() === 'global') return msg.reply(`✎ Usa *${usedPrefix + command} global* para el modo global.`);
+
+    global.db.data.chats[msg.chat].prefix = prefix;
+    return msg.reply(`❀ Se configuró el prefijo del grupo a *${prefix}* correctamente.`);
   },
 };

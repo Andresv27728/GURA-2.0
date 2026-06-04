@@ -23,6 +23,6 @@ export default {
     if (!nuevo) return sock.reply(msg.chat, `✐ Debes mencionar al nuevo dueño del Socket.\n> Ejemplo: *${usedPrefix + command}* @${idBot.split('@')[0]}`, msg, { mentions: [idBot] });
     const [ownerActual, ownerNuevo] = [actual ? actual.split('@')[0] : null, nuevo.split('@')[0]];
     global.db.data.settings[idBot].owner = nuevo;
-    return sock.sendMessage(msg.chat, { text: actual && actual !== nuevo ? `✿ El dueño del sokect ha sido cambiado de @${ownerActual} a @${ownerNuevo}!` : `❀ Se asignó a @${ownerNuevo} como nuevo propietario de *${config.namebot || 'Bot'}*!`, mentions: [nuevo, ...(actual && actual !== nuevo ? [actual] : [])] }, { quoted: msg });
+    return sock.sendMessage(msg.chat, { text: actual && actual !== nuevo ? `✿ El dueño del sokect ha sido cambiado de @${ownerActual} a @${ownerNuevo}!` : `❀ Se asignó a @${ownerNuevo} como nuevo propietario de *${config.namebot || 'Gura'}*!`, mentions: [nuevo, ...(actual && actual !== nuevo ? [actual] : [])] }, { quoted: msg });
   },
 };

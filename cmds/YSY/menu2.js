@@ -1,16 +1,51 @@
 import moment from "moment-timezone"
 import fetch from "node-fetch"
 
-const christmasBorders = [
-  "🌌🔭🧪🔬👨‍🔬👩‍🔬",
-  "🌌⚛️🧪⚗️🔬🔭",
-  "⚛️⚗️🧪🔬🌌⚛️",
-  "👨‍🔬🔭⚛️🔬⚗️👩‍🔬",
-  "🧪⚗️🔬👨‍🔬👩‍🔬⚛️🔭"
+const oceanBorders = [
+  "🌊🦈💙🫧🔱🐚",
+  "💙🌊🐬🫧🦈🌊",
+  "🐚🔱🌊💙🫧🐬",
+  "🦈💙🌊🐚🔱🫧",
+  "🫧🌊💙🐬🐚🔱"
+]
+
+const frasesGura = [
+  "🌊 Las olas siempre traen algo nuevo, ¡splish splash!",
+  "🔱 Gura llegó desde Atlantis para acompañarte.",
+  "🦈💙 Que tu día sea tan tranquilo como las profundidades del océano.",
+  "¡Aaaaaa! Gura te desea mares de felicidad.",
+  "🌊 El océano es grande, pero mi hambre es mayor. ¿Alguien dijo salmón?",
+  "🐚 Un saludo desde Atlantis, ¡una sonrisa para ti!",
+  "💙🐬 Todo es más lindo cuando suena el mar.",
+  "🔱🌟 Nunca es tarde para construir un castillo de arena.",
+  "🦈 Gura te observa y te desea buenas vibras.",
+  "💙 Que la magia del mar te acompañe siempre.",
+  "🌊 Mareas altas o bajas, siempre estaré aquí.",
+  "🫧💫 Recuerda: cada ola trae una nueva oportunidad.",
+  "🐚 Desde las profundidades, Gura te dice: ¡hola chumbie!",
+  "🐬 Incluso los tiburones necesitamos un descanso a veces.",
+  "🌊 Las olas brillan más cuando tú sonríes.",
+  "💙 Tu corazón es más profundo que cualquier fosa marina.",
+  "🐟 Nunca dejes de nadar hacia tus sueños.",
+  "🔱🧜 Una sirena dejó un mensaje secreto en el coral para ti.",
+  "🫧 La vida es más bonita bajo el agua.",
+  "🌊 ¡Gura está en camino!",
+  "🐬💙 Navega con el corazón ligero.",
+  "El sol brilla en la superficie, pero la paz está en el fondo.",
+  "💫 Un pequeño tiburón te desea un gran día.",
+  "🌊 Las mejores aventuras comienzan con un chapuzón.",
+  "🐟 Que cada ola te recuerde que eres único.",
+  "🐚 ¿Escuchas eso? Es el mar llamándote.",
+  "💙 Gura manda abrazos salados pero sinceros.",
+  "🦈 Un tiburón feliz es un tiburón que comió bien."
 ]
 
 function randomBorder() {
-  return christmasBorders[Math.floor(Math.random() * christmasBorders.length)]
+  return oceanBorders[Math.floor(Math.random() * oceanBorders.length)]
+}
+
+function randomFraseGura() {
+  return frasesGura[Math.floor(Math.random() * frasesGura.length)]
 }
 
 async function makeFkontak() {
@@ -18,8 +53,8 @@ async function makeFkontak() {
     const res = await fetch('https://files.catbox.moe/kjg1hi.jpg')
     const thumb = Buffer.from(await res.arrayBuffer())
     return {
-      key: { participants: '0@s.whatsapp.net', remoteJid: 'status@broadcast', fromMe: false, id: 'Senku' },
-      message: { locationMessage: { name: 'Laboratorio Senku', jpegThumbnail: thumb } },
+      key: { participants: '0@s.whatsapp.net', remoteJid: 'status@broadcast', fromMe: false, id: 'GawrGura' },
+      message: { locationMessage: { name: 'Atlantis de Gawr Gura', jpegThumbnail: thumb } },
       participant: '0@s.whatsapp.net'
     }
   } catch {
@@ -65,13 +100,13 @@ export default {
           .join('\n')
 
         const border = randomBorder()
-        const text = `${border}\n *BOT*\n${border}\n\n*Categoría:* ${args[0]}\n*Comandos disponibles:*\n\n${comandos || 'No hay comandos en esta categoría.'}\n\n${border}`
+        const text = `${border}\n *GAWR GURA*\n${border}\n\n${randomFraseGura()}\n\n*Categoría:* ${args[0]}\n*Comandos disponibles:*\n\n${comandos || 'No hay comandos en esta categoría.'}\n\n${border}`
 
         const msg2 = baileys.generateWAMessageFromContent(
           msg.chat,
           baileys.proto.Message.fromObject({
             interactiveMessage: {
-              header: { title: ": ̗̀「𝐈𝐬𝐨𝐥𝐚𝐭𝐞𝐝𝐋𝐚𝐛𝐬」" },
+              header: { title: ": ̗̀「GAWR GURA」" },
               body: { text },
               nativeFlowMessage: {
                 buttons: [{ name: "inapp_signup", buttonParamsJson: "https://yosoyyo-api-ofc.onrender.com" }]
@@ -92,14 +127,15 @@ export default {
       const uptimeStr = `${h}h ${mnt}m ${s}s`
 
       const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net'
-      const botName = global.db?.data?.settings?.[botId]?.botname || 'Bot'
+      const botName = global.db?.data?.settings?.[botId]?.botname || 'GAWR GURA'
 
       const border = randomBorder()
       const headerText = `${border}
-*BOT*
+*GAWR GURA*
 ${border}
 
 ✨ *Bot:* ${botName}
+💙 *Frase:* ${randomFraseGura()}
 ⏱️ *Uptime:* ${uptimeStr}
 🕒 *Hora:* ${moment.tz('America/Bogota').format('HH:mm:ss')}
 📅 *Fecha:* ${moment.tz('America/Bogota').format('DD/MM/YYYY')}
@@ -122,10 +158,10 @@ ${border}`
       }))
 
       const interactiveMessage = {
-        body: { text: `${headerText}\n\n *Elige una categoría para continuar:*` },
-        footer: { text: "CATEGORIAS" },
+        body: { text: `${headerText}\n\n *Elige una categoría para continuar, chumbie:*` },
+        footer: { text: "ATLANTIS" },
         header: {
-          title: "MENÚ PRINCIPAL",
+          title: "MENÚ GAWR GURA",
           hasMediaAttachment: true,
           videoMessage: mediaHeader.videoMessage
         },
@@ -135,7 +171,7 @@ ${border}`
               name: "single_select",
               buttonParamsJson: JSON.stringify({
                 title: "Categorías disponibles",
-                sections: [{ title: "Laboratorio", rows }]
+                sections: [{ title: "Atlantis", rows }]
               })
             }
           ],
@@ -158,7 +194,7 @@ ${border}`
         msg.chat,
         baileys.proto.Message.fromObject({
           interactiveMessage: {
-            header: { title: ": ̗̀「𝐈𝐬𝐨𝐥𝐚𝐭𝐞𝐝𝐋𝐚𝐛𝐬」" },
+            header: { title: ": ̗̀「GAWR GURA」" },
             body: { text: `> Ocurrió un error al ejecutar el comando.\n> [Error: *${e.message}*]` },
             nativeFlowMessage: {
               buttons: [{ name: "inapp_signup", buttonParamsJson: "https://yosoyyo-api-ofc.onrender.com" }]

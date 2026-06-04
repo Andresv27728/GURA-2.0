@@ -44,14 +44,14 @@ export default {
       if (!groupParticipants.includes(jid)) return null;
       mentionedJid.push(jid);
       const data = global.db.data.settings[jid];
-      const name = data?.namebot || 'Bot';
+      const name = data?.namebot || 'Gura';
       return `- [${label} *${name}*] › @${number}`;
     };
     const formatBotAll = async (number, label) => {
       const jid = number + '@s.whatsapp.net';
       mentionedJid.push(jid);
       const data = global.db.data.settings[jid];
-      const name = data?.namebot || 'Bot';
+      const name = data?.namebot || 'Gura';
       return `- [${label} *${name}*] › @${number}`;
     };
     const formatBot = isAll ? formatBotAll : formatBotInGroup;
@@ -60,7 +60,7 @@ export default {
       const inGroup = groupParticipants.includes(mainBotJid);
       if (isAll || inGroup) {
         const data = global.db.data.settings[mainBotJid];
-        const name = data?.namebot || 'Bot';
+        const name = data?.namebot || 'Gura';
         const number = mainBotJid.split('@')[0];
         mentionedJid.push(mainBotJid);
         categorizedBots.Owner.push(`- [Owner *${name}*] › @${number}`);

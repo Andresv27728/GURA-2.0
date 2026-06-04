@@ -21,7 +21,7 @@ export default {
     const registeredGroups = allChats?.length || 0;
     const botId = sock.user.id.split(':')[0] + "@s.whatsapp.net" || false;
     const botSettings = global.db.data.settings[botId] || {};
-    const botname = botSettings.botname || 'Bot';
+    const botname = botSettings.botname || 'GAWR GURA';
     const allUsers = Object.values(global.db.data.users);
     const userCount = allUsers?.length || '0';
     const totalCommands = allUsers?.reduce((acc, user) => acc + (user.usedcommands || 0), 0) || 0;

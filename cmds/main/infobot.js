@@ -9,8 +9,8 @@ export default {
   run: async ({ msg, sock, usedPrefix, command, text }) => {
     const botId = sock.user.id.split(':')[0] + "@s.whatsapp.net";
     const botSettings = global.db.data.settings[botId] || {};
-    const botname = botSettings.botname || 'Bot';
-    const namebot = botSettings.namebot || 'Bot';
+    const botname = botSettings.botname || 'GAWR GURA';
+    const namebot = botSettings.namebot || 'Gura';
     const monedas = botSettings.currency || 'Yenes';
     const banner = botSettings.banner || '';
     const prefijo = botSettings.prefix;

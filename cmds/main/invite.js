@@ -19,7 +19,7 @@ export default {
     const grupo = msg.isGroup ? await getGroupName(sock, msg.chat) : 'Chat privado';
     const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
     const botSettings = global.db.data.settings[botId] || {};
-    const botname = botSettings.botname || 'Bot';
+    const botname = botSettings.botname || 'GAWR GURA';
     const dueño = botSettings.owner || '';
     const cooldown = 3600000;
     const nextTime = user.jointime + cooldown;

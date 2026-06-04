@@ -8,7 +8,7 @@ export default {
     const isOwner2 = [idBot, ...(config.owner ? [config.owner] : []), ...global.owner.map(num => num + '@s.whatsapp.net')].includes(msg.sender);
     if (!isOwner2) return msg.reply(global.mess.socket);
     const value = args.join(' ').trim();
-    if (!value) return msg.reply(`✐ Debes escribir un estado valido.\n> Ejemplo: *${usedPrefix + command} Hola! soy Yuki Suou*`);
+    if (!value) return msg.reply(`✐ Debes escribir un estado valido.\n> Ejemplo: *${usedPrefix + command} Hola! soy GAWR GURA*`);
     await sock.updateProfileStatus(value);
     return msg.reply(`✿ Se ha actualizado el estado del bot a *${value}*!`);
   },

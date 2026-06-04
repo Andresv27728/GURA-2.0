@@ -9,7 +9,7 @@ export function initDB(m, sock) {
   const jid = sock.user.id.split(':')[0] + '@s.whatsapp.net'
   const settings = global.db.data.settings[jid] ||= {}
   settings.self ??= false
-  settings.prefix ??= ['/', '!', '.', '#']
+  settings.prefix ??= 1
   settings.commandsejecut ??= isNumber(settings.commandsejecut) ? settings.commandsejecut : 0
   settings.newsletter_id ??= '120363401404146384@newsletter'
   settings.nameid ??= 'ೃ࿔ ყµҡเ ωαɓσƭร - σƒƒเ૮เαℓ ૮ɦαɳɳεℓ .ೃ࿐'
@@ -18,8 +18,8 @@ export function initDB(m, sock) {
   settings.banner ??= 'https://cdn.yuki-wabot.my.id/files/tCVD.jpeg'
   settings.icon ??= 'https://cdn.yuki-wabot.my.id/files/4U5V.jpeg'
   settings.currency ??= 'Yenes'
-  settings.namebot ??= 'Yuki'
-  settings.botname ??= 'Yuki Suou'
+  settings.namebot ??= 'Gura'
+  settings.botname ??= 'GAWR GURA'
   settings.owner ??= ''
   const user = global.db.data.users[m.sender] ||= {}
   user.name ??= m.pushName
@@ -36,6 +36,7 @@ export function initDB(m, sock) {
   const chat = global.db.data.chats[m.chat] ||= {}
   chat.users ||= {}
   chat.isBanned ??= false
+  chat.prefix ??= null
   chat.welcome ??= false
   chat.goodbye ??= false
   chat.sWelcome ??= ''

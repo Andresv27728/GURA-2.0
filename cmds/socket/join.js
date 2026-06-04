@@ -16,7 +16,7 @@ export default {
     try {
       const inviteCode = match[1];
       await sock.groupAcceptInvite(inviteCode);
-      await sock.reply(msg.chat, `❀ ${config.botname || 'Bot'} se ha unido exitosamente al grupo.`, msg);
+      await sock.reply(msg.chat, `❀ ${config.botname || 'GAWR GURA'} se ha unido exitosamente al grupo.`, msg);
     } catch (e) {
       const errMsg = String(e.message || e);
       if (errMsg.includes('not-authorized') || errMsg.includes('requires-admin')) {

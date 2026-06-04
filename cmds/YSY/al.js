@@ -11,7 +11,7 @@ export default {
         baileys.proto.Message.fromObject({
           interactiveMessage: {
             header: {
-              title: ": ̗̀「𝐈𝐬𝐨𝐥𝐚𝐭𝐞𝐝𝐋𝐚𝐛𝐬」"
+              title: "𝖄𝕺 𝕾𝕺𝖄 𝖄𝕺"
             },
             body: {
               text: "ꕥ Qwen está procesando tu respuesta..."
