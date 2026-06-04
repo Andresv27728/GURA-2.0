@@ -7,9 +7,11 @@ Why core/database.json is ignored
 - core/database.json contains runtime and local settings (users, chats, stats). To avoid merge conflicts and accidental overwrites when pulling changes, core/database.json is excluded from git and kept locally.
 
 How to use the example file
-1. A template example exists at core/database.example.json. Copy it to core/database.json the first time you run the bot, or keep your local copy between runs.
+1. You can store initial configuration in core/settings.json (versioned).
+   When the bot starts and core/database.json does not exist, it will automatically
+   create core/database.json from core/settings.json preserving structure.
 
-  cp core/database.example.json core/database.json
+   Example: create core/settings.json with the same structure as desired for the database.
 
 2. core/database.json is intentionally ignored by git (.gitignore entry). Do not commit your local core/database.json.
 
