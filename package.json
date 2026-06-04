@@ -46,6 +46,7 @@
     "moment": "^2.29.4",
     "moment-timezone": "^0.5.37",
     "node-cache": "latest",
+    "ffmpeg-static": "^5.2.0",
     "node-fetch": "^3.2.10",
     "node-shazam": "^1.2.7",
     "node-webpmux": "^3.2.0",
