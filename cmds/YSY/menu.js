@@ -50,7 +50,7 @@ function randomFraseGura() {
 
 async function makeFkontak() {
   try {
-    const res = await fetch('https://files.catbox.moe/kjg1hi.jpg')
+    const res = await fetch('https://raw.githubusercontent.com/Andresv27728/dtbs/main/LOGOS/IMG_20260317_215244_926.jpg')
     const thumb = Buffer.from(await res.arrayBuffer())
     return {
       key: { participants: '0@s.whatsapp.net', remoteJid: 'status@broadcast', fromMe: false, id: 'GawrGura' },
