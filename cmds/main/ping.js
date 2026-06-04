@@ -88,7 +88,7 @@ export default {
     const namebot = global.db?.data?.settings?.[botId]?.namebot || 'Gura'
 
     const tableData = [
-      ['Ida y vuelta WA', `${waRoundtrip} ms`],
+      ['𝕀𝕕𝕒 𝕪 𝕧𝕦𝕖𝕝𝕥𝕒 𝕎𝔸', `${waRoundtrip} ms`],
       ['Velocidad de respuesta', `${totalExec} ms`],
       ['Estado', 'En línea'],
       ['Nombre del host', os.hostname()],
