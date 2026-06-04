@@ -1,4 +1,5 @@
 import fetch from 'node-fetch'
+import fs from 'fs'
 
 export default {
   command: ['manga'],
@@ -34,8 +35,19 @@ export default {
         if (!items.length) {
           await msg.reply('No detecté archivos con la petición rápida. Intentando con navegador (puede demorar)...');
           try {
-            const puppeteer = await import('puppeteer');
-            const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+            // Prefer puppeteer-core + system Chromium to avoid huge downloads.
+            const tryImport = async (name) => {
+              try { const m = await import(name); return m.default || m } catch { return null }
+            }
+            const puppeteerCore = await tryImport('puppeteer-core')
+            const puppeteerFull = await tryImport('puppeteer')
+            const puppeteer = puppeteerCore || puppeteerFull
+            if (!puppeteer) throw new Error('No puppeteer available')
+            const candidates = [process.env.CHROME_PATH, process.env.CHROMIUM_PATH, '/usr/bin/chromium-browser', '/usr/bin/chromium', '/usr/bin/google-chrome-stable', '/usr/bin/google-chrome', '/usr/bin/headless-chromium']
+            const execPath = candidates.find(p => p && fs.existsSync(p))
+            const launchOpts = { args: ['--no-sandbox', '--disable-setuid-sandbox'] }
+            if (execPath) launchOpts.executablePath = execPath
+            const browser = await puppeteer.launch(launchOpts)
             const page = await browser.newPage();
             await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
             items = await page.evaluate(() => {
@@ -94,8 +106,18 @@ export default {
           // Intentar con Puppeteer para obtener el enlace de descarga final
           await msg.reply('No pude obtener el enlace directo con la petición rápida. Intentando con navegador (puede demorar)...');
           try {
-            const puppeteer = await import('puppeteer');
-            const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+            const tryImport = async (name) => {
+              try { const m = await import(name); return m.default || m } catch { return null }
+            }
+            const puppeteerCore = await tryImport('puppeteer-core')
+            const puppeteerFull = await tryImport('puppeteer')
+            const puppeteer = puppeteerCore || puppeteerFull
+            if (!puppeteer) throw new Error('No puppeteer available')
+            const candidates = [process.env.CHROME_PATH, process.env.CHROMIUM_PATH, '/usr/bin/chromium-browser', '/usr/bin/chromium', '/usr/bin/google-chrome-stable', '/usr/bin/google-chrome', '/usr/bin/headless-chromium']
+            const execPath = candidates.find(p => p && fs.existsSync(p))
+            const launchOpts = { args: ['--no-sandbox', '--disable-setuid-sandbox'] }
+            if (execPath) launchOpts.executablePath = execPath
+            const browser = await puppeteer.launch(launchOpts)
             const page = await browser.newPage();
             await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
             // Intentar leer href del botón de descarga
