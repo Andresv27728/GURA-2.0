@@ -1,5 +1,14 @@
 import { downloadContentFromMessage } from '@whiskeysockets/baileys';
-import { unwrapMessage } from '../../lib/utils.js';
+
+// utils.unwrapMessage is optional; import dynamically to avoid failing plugin load
+async function getUnwrapMessage() {
+  try {
+    const mod = await import('../../lib/utils.js');
+    return mod.unwrapMessage;
+  } catch (e) {
+    return null;
+  }
+}
 
 export default {
   command: ['ver', 'read', 'view'],
@@ -12,7 +21,8 @@ export default {
     const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
 
     // Desenvolvemos el mensaje para manejar viewOnce, ephemeral, etc.
-    const targetMsg = unwrapMessage(quoted || msg.message);
+    const unwrap = await getUnwrapMessage();
+    const targetMsg = unwrap ? unwrap(quoted || msg.message) : (quoted || msg.message);
 
     if (!targetMsg) {
         return sock.sendMessage(from, { text: 'No se pudo encontrar contenido en el mensaje.' }, { quoted: msg });

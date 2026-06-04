@@ -4,7 +4,6 @@ import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
 import { exec } from 'child_process'
-import ffmpegPath from 'ffmpeg-static'
 import { wrapper } from 'axios-cookiejar-support'
 import { CookieJar } from 'tough-cookie'
 import { yt2mate, savetube, ytSearch } from '../../lib/ytscrapers.js'
@@ -91,12 +90,18 @@ async function downloadToBuffer(url, referer = 'https://downr.org/') {
   return Buffer.from(response.data)
 }
 
+let ffmpegPath = null;
 function ffmpegConvert(input, output) {
-  return new Promise((resolve, reject) => {
-    exec(
-      `"${ffmpegPath}" -y -loglevel error -i "${input}" -map a -vn -acodec libmp3lame -ab 128k -ar 44100 "${output}"`,
-      err => err ? reject(err) : resolve()
-    )
+  return new Promise(async (resolve, reject) => {
+    try {
+      if (!ffmpegPath) {
+        try { ffmpegPath = (await import('ffmpeg-static')).default; } catch { ffmpegPath = null; }
+      }
+      const cmd = ffmpegPath
+        ? `"${ffmpegPath}" -y -loglevel error -i "${input}" -map a -vn -acodec libmp3lame -ab 128k -ar 44100 "${output}"`
+        : `ffmpeg -y -loglevel error -i "${input}" -map a -vn -acodec libmp3lame -ab 128k -ar 44100 "${output}"`;
+      exec(cmd, err => err ? reject(err) : resolve());
+    } catch (e) { reject(e); }
   })
 }
 
