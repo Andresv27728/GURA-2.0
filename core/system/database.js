@@ -88,21 +88,6 @@ global.loadDatabase = function loadDatabase() {
       global.db.data = Object.assign(global.db.data, parsed)
     } catch {}
   }
-
-  // If there is no database file yet but a settings file exists, use it to
-  // create the initial database so the server can start with tracked config.
-  // This allows keeping configuration in core/settings.json (versioned)
-  // while the runtime database core/database.json remains local and ignored.
-  const settingsFile = path.join(process.cwd(), 'core', 'settings.json')
-  if (!fs.existsSync(dbFile) && fs.existsSync(settingsFile)) {
-    try {
-      const parsedSettings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'))
-      // Write parsed settings as the initial database file
-      fs.writeFileSync(dbFile, JSON.stringify(parsedSettings, null, 2))
-      // Merge into runtime data as well
-      global.db.data = Object.assign(global.db.data, parsedSettings)
-    } catch (e) {}
-  }
   global.db.chain = _.chain(global.db.data)
   global.db.READ = false
   global.db._snapshot = JSON.stringify(global.db.data)
