@@ -13,19 +13,51 @@ export default {
       const isFile = /mediafire\.com\/(?:file)\//i.test(url);
 
       if (isFolder) {
-        // Obtener lista de archivos en la carpeta
-        const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-        const html = await res.text();
-        // Buscar enlaces a archivos. Intentamos capturar href a /file/ y el nombre visible
-        const re = /href="(https?:\/\/www\.mediafire\.com\/file\/[^"]+)"[^>]*>([^<]+?)<\/a>/gi;
-        let m;
-        const items = [];
-        while ((m = re.exec(html)) !== null) {
-          const link = m[1];
-          // nombre puede contener etiquetas; limpiamos
-          const name = m[2].replace(/<[^>]*>/g, '').trim();
-          if (link && name) items.push({ name, link });
+        // Intento rápido por fetch
+        let items = [];
+        try {
+          const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+          const html = await res.text();
+          // Buscar enlaces a archivos: href a /file/ y nombre visible
+          const re = /href="(https?:\/\/www\.mediafire\.com\/file\/[^"]+)"[^>]*>([^<]+?)<\/a>/gi;
+          let m;
+          while ((m = re.exec(html)) !== null) {
+            const link = m[1];
+            const name = m[2].replace(/<[^>]*>/g, '').trim();
+            if (link && name) items.push({ name, link });
+          }
+        } catch (e) {
+          items = [];
         }
+
+        // Si no detectó nada, intentar con Puppeteer (más robusto pero más lento)
+        if (!items.length) {
+          await msg.reply('No detecté archivos con la petición rápida. Intentando con navegador (puede demorar)...');
+          try {
+            const puppeteer = await import('puppeteer');
+            const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+            const page = await browser.newPage();
+            await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+            items = await page.evaluate(() => {
+              const out = [];
+              const anchors = Array.from(document.querySelectorAll('a'));
+              for (const a of anchors) {
+                try {
+                  const href = a.href || '';
+                  if (/https?:\/\/www\.mediafire\.com\/file\//.test(href)) {
+                    const name = (a.textContent || a.getAttribute('aria-label') || a.title || '').trim();
+                    if (name) out.push({ name: name.replace(/\s+/g, ' '), link: href });
+                  }
+                } catch {}
+              }
+              return out;
+            });
+            await browser.close();
+          } catch (e) {
+            console.error('Puppeteer folder error', e);
+          }
+        }
+
         if (!items.length) return msg.reply('No pude detectar archivos en esa carpeta o la carpeta está vacía.');
         // Construir mensaje con lista enumerada
         let out = `Archivos detectados: \n\n`;
@@ -58,6 +90,36 @@ export default {
           if (m3 && m3[1]) dl = m3[1];
         }
 
+        if (!dl) {
+          // Intentar con Puppeteer para obtener el enlace de descarga final
+          await msg.reply('No pude obtener el enlace directo con la petición rápida. Intentando con navegador (puede demorar)...');
+          try {
+            const puppeteer = await import('puppeteer');
+            const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+            const page = await browser.newPage();
+            await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+            // Intentar leer href del botón de descarga
+            const href = await page.evaluate(() => {
+              const btn = document.querySelector('#downloadButton') || document.querySelector('a#downloadButton');
+              if (btn && btn.href) return btn.href;
+              // buscar enlaces que contengan download.mediafire.com
+              const as = Array.from(document.querySelectorAll('a'));
+              for (const a of as) if (a.href && /download\.mediafire\.com|download\./.test(a.href)) return a.href;
+              // meta refresh
+              const meta = document.querySelector('meta[http-equiv="refresh"]');
+              if (meta) {
+                const c = meta.getAttribute('content') || '';
+                const m = c.match(/url=(.*)$/i);
+                if (m) return m[1];
+              }
+              return null;
+            });
+            if (href) dl = href.replace(/&amp;/g, '&');
+            await browser.close();
+          } catch (e) {
+            console.error('Puppeteer file error', e);
+          }
+        }
         if (!dl) return msg.reply('No pude obtener el enlace de descarga directo desde la página. Intenta enviar el enlace de archivo (https://www.mediafire.com/file/...).');
 
         // Si el enlace es relativo o contiene &amp; limpiar
