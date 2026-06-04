@@ -304,7 +304,9 @@ export async function smsg(sock, msg, store) {
       return norm;
     };
     msg.mentionedJid = rawMentioned.map(resolveMentionJid).filter(Boolean);
-    msg.text = msg.msg?.text || msg.msg?.caption || msg.message?.conversation || msg.msg?.contentText || msg.msg?.selectedDisplayText || msg.msg?.title || '';
+    // Prefer the raw selected identifiers from interactive replies (selectedRowId, selectedButtonId, selectedId)
+    // so that command parsing in main.js can detect menu/list selections which usually send an id like ".menu Category".
+    msg.text = msg.msg?.text || msg.msg?.caption || msg.msg?.selectedButtonId || msg.msg?.singleSelectReply?.selectedRowId || msg.msg?.selectedId || msg.message?.conversation || msg.msg?.contentText || msg.msg?.selectedDisplayText || msg.msg?.title || '';
     const hasChatPrefixOverride = msg.isGroup && chatSetting.prefix !== null && chatSetting.prefix !== undefined;
     const activePrefixSource = hasChatPrefixOverride ? chatSetting.prefix : botSetting.prefix;
     const activePrefixes = normalizePrefixes(activePrefixSource);
