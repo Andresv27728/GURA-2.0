@@ -43,6 +43,8 @@
     "node-cache": "latest",
     "node-fetch": "^3.2.10",
     "node-webpmux": "^3.2.0",
+    "puppeteer-core": "^21.0.0",
+    "puppeteer": "^21.0.0",
     "performance-now": "^2.1.0",
     "pino": "^8.8.0",
     "qrcode": "^1.5.4",
