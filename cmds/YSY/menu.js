@@ -153,42 +153,19 @@ ${border}`
         { upload: sock.waUploadToServer }
       )
 
-      // 📂 Lista de categorías
-      const rows = Object.keys(categories).map(cat => ({
-        title: `${cat}`,
-        description: `Comandos de ${cat}`,
-        id: `.menu ${cat}`
-      }))
+      // Construir un solo mensaje con todas las categorías y comandos
+      const catEntries = Object.keys(categories).sort((a, b) => a.localeCompare(b));
+      const listText = catEntries.map((cat, idx) => {
+        const cmds = categories[cat].map(c => `  • ${c}`).join('\n');
+        return `\n${idx + 1}. ${cat} (${categories[cat].length})\n${cmds}`;
+      }).join('\n');
 
-      const interactiveMessage = {
-        body: { text: `${headerText}\n\n *Elige una categoría para continuar, chumbie:*` },
-        footer: { text: "ATLANTIS" },
-        header: {
-          title: "MENÚ GAWR GURA",
-          hasMediaAttachment: true,
-          videoMessage: mediaHeader.videoMessage
-        },
-        nativeFlowMessage: {
-          buttons: [
-            {
-              name: "single_select",
-              buttonParamsJson: JSON.stringify({
-                title: "Categorías disponibles",
-                sections: [{ title: "Atlantis", rows }]
-              })
-            }
-          ],
-          messageParamsJson: ""
-        }
-      }
+      const fancyHeader = `${border}\n╔═━ ･ ｡ﾟ☆: *.☾ .* ☆ﾟ｡･ ･━═╗\n   ✦ MENÚ GAWR GURA ✦\n╚═━ ･ ｡ﾟ☆: *.☾ .* ☆ﾟ｡･ ･━═╝\n${border}`;
 
-      const msgSend = baileys.generateWAMessageFromContent(
-        msg.chat,
-        { viewOnceMessage: { message: { interactiveMessage } } },
-        { userJid: sock.user.id, quoted: fkontak }
-      )
+      const fullText = `${fancyHeader}\n\n✨ ${randomFraseGura()}\n\n${headerText}\n\n📚 Categorías y comandos:${listText}\n\n${border}\nUsa: .menu <Categoría> para ver solo esa categoría (ej. .menu utils)`;
 
-      await sock.relayMessage(msg.chat, msgSend.message, { messageId: msgSend.key.id })
+      // Enviar como texto simple con contacto falso como quoted para estilo
+      await sock.sendMessage(msg.chat, { text: fullText }, { quoted: fkontak });
 
     } catch (e) {
       console.error(e)
