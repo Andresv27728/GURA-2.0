@@ -188,11 +188,13 @@ export default async (sock, msg) => {
   if (!cmdData) {
     if (settings.prefix === 1) return;
     await sock.readMessages([msg.key]);
-    return msg.reply(`ꕤ El comando *${command}* no existe.\n✎ Usa *${usedPrefix}help* para ver la lista de comandos disponibles.`);
+    // Respuesta eliminada: no notificar al usuario que el comando no existe
+    return;
   }
   if (cmdData.isOwner && !isOwner) {
     if (settings.prefix === 1) return;
-    return msg.reply(`ꕤ El comando *${command}* no existe.\n✎ Usa *${usedPrefix}help* para ver la lista de comandos disponibles.`);
+    // Respuesta eliminada: no notificar al usuario que el comando no existe
+    return;
   }
   if (cmdData.isAdmin && !isAdmins) return sock.reply(msg.chat, '《✧》 Este comando solo puede ser ejecutado por los Administradores del Grupo.', msg);
   if (cmdData.botAdmin && !isBotAdmins) return sock.reply(msg.chat, '《✧》 Este comando solo puede ser ejecutado si el Socket es Administrador del Grupo.', msg);
